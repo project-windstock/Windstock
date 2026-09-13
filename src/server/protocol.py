@@ -3378,6 +3378,7 @@ def build_level_up_rewards_response(level) -> bytes:
     return w.to_bytes()
 
 
+<<<<<<< HEAD:src/server/protocol.py
 # --- PokeStop loot table ------------------------------------------------------
 # What a spin can hand out, fully editable in the World Manager (and in
 # settings.json as the "pokestops.loot_table" list). Each entry is one row of the
@@ -3464,6 +3465,42 @@ def _loot_roll(rnd):
         if take > 0:
             awards[i] = (iid, cnt - take)
             total -= take
+=======
+LOOT_ITEM_IDS = {
+    "poke_ball": 1, "great_ball": 2, "ultra_ball": 3, "master_ball": 4,
+    "potion": 101, "super_potion": 102, "hyper_potion": 103, "max_potion": 104,
+    "revive": 201, "max_revive": 202, "lucky_egg": 301, "incense": 401,
+    "lure": 501, "razz_berry": 701,
+}
+
+
+def _roll_loot(rnd, table):
+    """[(item_id, count)] from a {"name": {chance, min, max}} drop table. Bad
+    entries are skipped rather than breaking the spin. The first entry always
+    comes back first (even if it missed its roll, with count 0 -- the caller
+    tops it up), so it can act as the filler item."""
+    awards = []
+    if not isinstance(table, dict):
+        return awards
+    for idx, (name, spec) in enumerate(table.items()):
+        iid = LOOT_ITEM_IDS.get(str(name).strip().lower())
+        if iid is None:
+            try:
+                iid = int(name)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(spec, dict):
+            continue
+        try:
+            chance = float(spec.get("chance", 1.0))
+            lo = max(0, int(spec.get("min", 1)))
+            hi = max(lo, int(spec.get("max", lo)))
+        except (TypeError, ValueError):
+            continue
+        cnt = rnd.randint(lo, hi) if rnd.random() < chance else 0
+        if cnt > 0 or not awards and idx == 0:
+            awards.append((iid, cnt))
+>>>>>>> 72085cec584d9012abb62b79a0ad7417aca3908d:work/server/protocol.py
     return awards
 
 
@@ -3472,7 +3509,31 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
     #   cooldown_complete_timestamp_ms=6 }. ItemAward { item_id=1, item_count=2 }.
     import world
     rnd = _random.Random(hash(fort_id) ^ (now_ms // 300000))   # re-rolls per 5-min spin
+<<<<<<< HEAD:src/server/protocol.py
     awards = _loot_roll(rnd)
+=======
+    _lo = _cfg.get("pokestops", "min_items_per_spin", cast=int)
+    _hi = max(_lo, _cfg.get("pokestops", "max_items_per_spin", cast=int))
+    # Roll the configurable drop table (settings.json pokestops.loot). The first
+    # entry is topped up at the end so the haul never comes to fewer than
+    # min_items_per_spin items in total.
+    awards = _roll_loot(rnd, _cfg.get("pokestops", "loot"))
+    if awards:
+        other = sum(c for _i, c in awards[1:])
+        awards[0] = (awards[0][0], max(awards[0][1], _lo - other))
+        awards = [(i, c) for i, c in awards if c > 0]
+    # ...and trim back to the maximum, taking from the last entries first and
+    # never dropping any award below one.
+    total = sum(c for _i, c in awards)
+    for i in range(len(awards) - 1, -1, -1):
+        if total <= _hi:
+            break
+        iid, cnt = awards[i]
+        take = min(cnt - 1, total - _hi)
+        if take > 0:
+            awards[i] = (iid, cnt - take)
+            total -= take
+>>>>>>> 72085cec584d9012abb62b79a0ad7417aca3908d:work/server/protocol.py
     room = world.room_in_bag()
     if room <= 0:
         # FortSearchResult 4 = INVENTORY_FULL: the client says "your bag is full".
