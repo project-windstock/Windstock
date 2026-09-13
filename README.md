@@ -1,5 +1,5 @@
 # Pokémon GO 0.29 Private Server
-
+I use claude to push :)
 Pokémon GO private servers let people play the game without Niantic's official servers. They
 recreate the original gameplay, and can add custom features or remove limits the official game
 had. People use them to revisit old versions of the game, experiment, or play entirely offline.
