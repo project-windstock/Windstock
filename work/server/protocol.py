@@ -3367,6 +3367,43 @@ def build_level_up_rewards_response(level) -> bytes:
     return w.to_bytes()
 
 
+LOOT_ITEM_IDS = {
+    "poke_ball": 1, "great_ball": 2, "ultra_ball": 3, "master_ball": 4,
+    "potion": 101, "super_potion": 102, "hyper_potion": 103, "max_potion": 104,
+    "revive": 201, "max_revive": 202, "lucky_egg": 301, "incense": 401,
+    "lure": 501, "razz_berry": 701,
+}
+
+
+def _roll_loot(rnd, table):
+    """[(item_id, count)] from a {"name": {chance, min, max}} drop table. Bad
+    entries are skipped rather than breaking the spin. The first entry always
+    comes back first (even if it missed its roll, with count 0 -- the caller
+    tops it up), so it can act as the filler item."""
+    awards = []
+    if not isinstance(table, dict):
+        return awards
+    for idx, (name, spec) in enumerate(table.items()):
+        iid = LOOT_ITEM_IDS.get(str(name).strip().lower())
+        if iid is None:
+            try:
+                iid = int(name)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(spec, dict):
+            continue
+        try:
+            chance = float(spec.get("chance", 1.0))
+            lo = max(0, int(spec.get("min", 1)))
+            hi = max(lo, int(spec.get("max", lo)))
+        except (TypeError, ValueError):
+            continue
+        cnt = rnd.randint(lo, hi) if rnd.random() < chance else 0
+        if cnt > 0 or not awards and idx == 0:
+            awards.append((iid, cnt))
+    return awards
+
+
 def build_fort_search_response(fort_id, now_ms) -> bytes:
     # FortSearchResponse { result=1 (SUCCESS=1), items_awarded=2, experience_awarded=5,
     #   cooldown_complete_timestamp_ms=6 }. ItemAward { item_id=1, item_count=2 }.
@@ -3374,20 +3411,16 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
     rnd = _random.Random(hash(fort_id) ^ (now_ms // 300000))   # re-rolls per 5-min spin
     _lo = _cfg.get("pokestops", "min_items_per_spin", cast=int)
     _hi = max(_lo, _cfg.get("pokestops", "max_items_per_spin", cast=int))
-    # A spin ALWAYS gives Poke Balls, a Potion and a Revive; Great/Ultra Balls and
-    # berries turn up now and then. Poke Balls are topped up at the end so the haul
-    # never comes to fewer than min_items_per_spin items in total.
-    awards = [(ITEM_POTION, rnd.randint(1, 2)), (ITEM_REVIVE, 1)]
-    if rnd.random() < _cfg.get("pokestops", "great_ball_chance", cast=float):
-        awards.append((ITEM_GREAT_BALL, rnd.randint(1, 2)))
-    if rnd.random() < _cfg.get("pokestops", "ultra_ball_chance", cast=float):
-        awards.append((ITEM_ULTRA_BALL, 1))
-    if rnd.random() < _cfg.get("pokestops", "razz_berry_chance", cast=float):
-        awards.append((ITEM_RAZZ_BERRY, rnd.randint(1, 2)))
-    other = sum(c for _i, c in awards)
-    awards.insert(0, (ITEM_POKE_BALL, max(rnd.randint(1, 3), _lo - other)))
-    # ...and trim back to the maximum, taking from the extras first and never
-    # dropping any award below one, so the guaranteed three always survive.
+    # Roll the configurable drop table (settings.json pokestops.loot). The first
+    # entry is topped up at the end so the haul never comes to fewer than
+    # min_items_per_spin items in total.
+    awards = _roll_loot(rnd, _cfg.get("pokestops", "loot"))
+    if awards:
+        other = sum(c for _i, c in awards[1:])
+        awards[0] = (awards[0][0], max(awards[0][1], _lo - other))
+        awards = [(i, c) for i, c in awards if c > 0]
+    # ...and trim back to the maximum, taking from the last entries first and
+    # never dropping any award below one.
     total = sum(c for _i, c in awards)
     for i in range(len(awards) - 1, -1, -1):
         if total <= _hi:

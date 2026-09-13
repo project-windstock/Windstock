@@ -91,9 +91,17 @@ DEFAULTS = {
         "cooldown_minutes": 5,
         "min_items_per_spin": 5,        # a spin never gives fewer items than this
         "max_items_per_spin": 8,
-        "great_ball_chance": 0.30,      # Great Balls turn up now and then
-        "ultra_ball_chance": 0.10,      # Ultra Balls are rarer
-        "razz_berry_chance": 0.35,
+        # What a spin can drop. Each entry: chance (0-1) it drops at all, and
+        # how many (min-max). The FIRST entry tops the haul up to
+        # min_items_per_spin. Item names are listed in the _readme.
+        "loot": {
+            "poke_ball":   {"chance": 1.0,  "min": 1, "max": 3},
+            "potion":      {"chance": 1.0,  "min": 1, "max": 2},
+            "revive":      {"chance": 1.0,  "min": 1, "max": 1},
+            "great_ball":  {"chance": 0.30, "min": 1, "max": 2},
+            "ultra_ball":  {"chance": 0.10, "min": 1, "max": 1},
+            "razz_berry":  {"chance": 0.35, "min": 1, "max": 2},
+        },
     },
     "gyms": {
         "chance_per_l15_cell": 0.25,   # ~1 gym per 4 level-15 cells
@@ -310,6 +318,15 @@ _README = [
     "   xp_per_spin .......... XP each time you spin a stop",
     "   cooldown_minutes ..... how long a stop stays purple before reuse",
     "   min/max_items_per_spin  how many items a spin gives",
+    "   loot ................. the drop table: \"item\": {chance, min, max}.",
+    "                          chance 1.0 = always, 0 = never. Add, remove or",
+    "                          reorder entries freely; the first one is used to",
+    "                          top a spin up to min_items_per_spin. Items:",
+    "                          poke_ball great_ball ultra_ball master_ball",
+    "                          potion super_potion hyper_potion max_potion",
+    "                          revive max_revive lucky_egg incense lure",
+    "                          razz_berry  (or a raw item id number as the name)",
+    "                          Also editable in the World Manager website.",
     "   anchor_near_player ... false = stops/gyms stay at fixed spots (best for",
     "                          driving). true = also drops a trio at your feet that",
     "                          follows you -- spams the road when you move.",
@@ -526,6 +543,25 @@ def set(section, key, value):
         _cache["checked"] = 0.0
         _cache["mtime"] = None
     return value
+
+
+def set_values(section, values):
+    """Write keys into one section of settings.json (used by the World Manager),
+    keeping everything else in the file as it was."""
+    with _lock:
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as fh:
+                user = json.load(fh)
+        except (OSError, ValueError):
+            user = {}
+        doc = {"_readme": _README}
+        doc.update(_merged(user))
+        for k, v in values.items():
+            if k in DEFAULTS[section]:
+                doc[section][k] = v
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2)
+        _cache["data"] = None                  # reload on the next get()
 
 
 def get(section, key, env=None, cast=None):
