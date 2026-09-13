@@ -94,6 +94,9 @@ DEFAULTS = {
         # What a spin can drop. Each entry: chance (0-1) it drops at all, and
         # how many (min-max). The FIRST entry tops the haul up to
         # min_items_per_spin. Item names are listed in the _readme.
+        # "chance" = each entry rolls on its own; "weighted" = every item in the
+        # spin is picked separately, using the chances as odds (real-game style)
+        "loot_mode": "chance",
         "loot": {
             "poke_ball":   {"chance": 1.0,  "min": 1, "max": 3},
             "potion":      {"chance": 1.0,  "min": 1, "max": 2},
@@ -327,6 +330,11 @@ _README = [
     "                          revive max_revive lucky_egg incense lure",
     "                          razz_berry  (or a raw item id number as the name)",
     "                          Also editable in the World Manager website.",
+    "   loot_mode ............ \"chance\" = each loot entry rolls on its own, as",
+    "                          above. \"weighted\" = a spin gives min-max items and",
+    "                          EACH one is picked using the chances as odds (like",
+    "                          the real game: 0.56 poke_ball = 56% of items);",
+    "                          per-entry min/max are ignored in this mode.",
     "   anchor_near_player ... false = stops/gyms stay at fixed spots (best for",
     "                          driving). true = also drops a trio at your feet that",
     "                          follows you -- spams the road when you move.",

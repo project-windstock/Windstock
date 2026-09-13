@@ -3404,6 +3404,31 @@ def _roll_loot(rnd, table):
     return awards
 
 
+def _pick_weighted(rnd, table, n):
+    """n items, each drawn from the table using its chance as a weight.
+    Returns [(item_id, count)] in table order."""
+    ids, weights = [], []
+    for name, spec in (table.items() if isinstance(table, dict) else ()):
+        iid = LOOT_ITEM_IDS.get(str(name).strip().lower())
+        if iid is None:
+            try:
+                iid = int(name)
+            except (TypeError, ValueError):
+                continue
+        try:
+            wt = float(spec.get("chance", 0)) if isinstance(spec, dict) else 0.0
+        except (TypeError, ValueError):
+            continue
+        if wt > 0:
+            ids.append(iid); weights.append(wt)
+    if not ids or n <= 0:
+        return []
+    counts = {}
+    for iid in rnd.choices(ids, weights=weights, k=n):
+        counts[iid] = counts.get(iid, 0) + 1
+    return [(iid, counts[iid]) for iid in ids if iid in counts]
+
+
 def build_fort_search_response(fort_id, now_ms) -> bytes:
     # FortSearchResponse { result=1 (SUCCESS=1), items_awarded=2, experience_awarded=5,
     #   cooldown_complete_timestamp_ms=6 }. ItemAward { item_id=1, item_count=2 }.
@@ -3414,8 +3439,13 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
     # Roll the configurable drop table (settings.json pokestops.loot). The first
     # entry is topped up at the end so the haul never comes to fewer than
     # min_items_per_spin items in total.
-    awards = _roll_loot(rnd, _cfg.get("pokestops", "loot"))
-    if awards:
+    if _cfg.get("pokestops", "loot_mode") == "weighted":
+        # Real-game style: every item in the spin is its own pick, with the
+        # chances used as weights (they don't have to add up to 1).
+        awards = _pick_weighted(rnd, _cfg.get("pokestops", "loot"), rnd.randint(_lo, _hi))
+    else:
+        awards = _roll_loot(rnd, _cfg.get("pokestops", "loot"))
+    if awards and _cfg.get("pokestops", "loot_mode") != "weighted":
         other = sum(c for _i, c in awards[1:])
         awards[0] = (awards[0][0], max(awards[0][1], _lo - other))
         awards = [(i, c) for i, c in awards if c > 0]
@@ -3455,7 +3485,11 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
     world.bump("poke_stop_visits")
     world.add_xp(_cfg.get("pokestops", "xp_per_spin", cast=int))
     for iid, cnt in awards:
-        w.message(2, build_item_award(iid, cnt))
+        # One ItemAward per ITEM, each count 1, like the real server: the client
+        # draws one bubble per award, so "Poke Ball x3" as a single award shows
+        # up as just one item.
+        for _ in range(cnt):
+            w.message(2, build_item_award(iid, 1))
         # actually PUT them in the bag -- otherwise the spin animation shows a
         # Poke Ball but GET_INVENTORY never reports it and it's nowhere to be found
         world.add_item(iid, cnt)

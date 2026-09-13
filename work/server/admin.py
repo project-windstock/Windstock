@@ -119,14 +119,20 @@ Changes apply live &mdash; walk around in game and they'll appear.</div>
 <div class="list" id="loot"></div>
 <div class="bar">
   <button onclick="lootAdd()">+ Add item</button>
+  <select id="loot-mode" title="how chances are used">
+    <option value="weighted">Weighted: each item picked by odds (real game)</option>
+    <option value="chance">Chance: each row rolls on its own</option>
+  </select>
   <label class="inline-label">Items per spin
     <input id="loot-min" type="number" min="0" max="999" size="3"> &ndash;
     <input id="loot-max" type="number" min="0" max="999" size="3"></label>
   <button onclick="lootSave()">Save loot</button>
   <button onclick="lootLoad()">Revert</button>
 </div>
-<div class="hint" id="loothint">Chance 1 = always drops, 0 = never. The first row tops a
-spin up to the minimum. Applies to the next spin &mdash; no restart.</div>
+<div class="hint" id="loothint">Weighted: a spin gives "items per spin" items, each picked
+using the chances as odds (count columns are ignored). Chance: 1 = row always drops, 0 =
+never, and the first row tops a spin up to the minimum. Applies to the next spin &mdash; no
+restart.</div>
 
 <h2>Raid</h2>
 <div class="bar">
@@ -255,6 +261,7 @@ async function lootLoad(){
   const r=await post('/api/loot',{}); LOOT_ITEMS=r.items; $('loot').innerHTML='';
   Object.entries(r.loot||{}).forEach(([n,s])=>lootRow(n,s.chance??1,s.min??1,s.max??1));
   $('loot-min').value=r.min_items; $('loot-max').value=r.max_items;
+  $('loot-mode').value=r.mode==='weighted'?'weighted':'chance';
 }
 function lootAdd(){lootRow(LOOT_ITEMS[0],0.5,1,1);}
 async function lootSave(){
@@ -264,7 +271,7 @@ async function lootSave(){
   const names=rows.map(r=>r.item);
   if(new Set(names).size!==names.length){$('loothint').textContent='✗ Each item can only appear once.';
     $('loothint').style.color='#ff9a9a';return;}
-  await post('/api/loot',{loot:rows,min_items:+$('loot-min').value,max_items:+$('loot-max').value});
+  await post('/api/loot',{loot:rows,mode:$('loot-mode').value,min_items:+$('loot-min').value,max_items:+$('loot-max').value});
   await lootLoad();
   $('loothint').textContent='✓ Saved — applies to the next spin.'; $('loothint').style.color='#7fd1a6';
 }
@@ -655,9 +662,11 @@ class _Handler(BaseHTTPRequestHandler):
                     lo = max(0, min(999, int(d.get("min_items", 0))))
                     CFG.set_values("pokestops", {
                         "loot": loot, "min_items_per_spin": lo,
+                        "loot_mode": "weighted" if d.get("mode") == "weighted" else "chance",
                         "max_items_per_spin": max(lo, min(999, int(d.get("max_items", lo))))})
                 return self._json({
                     "loot": CFG.get("pokestops", "loot"),
+                    "mode": CFG.get("pokestops", "loot_mode"),
                     "min_items": CFG.get("pokestops", "min_items_per_spin"),
                     "max_items": CFG.get("pokestops", "max_items_per_spin"),
                     "items": list(P.LOOT_ITEM_IDS)})
