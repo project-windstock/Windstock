@@ -1,15 +1,13 @@
 # ============================================================================
-#  WHITELIST — only the server and tools source (plus README) ever go to GitHub.
-#  RELEASE/, saves, APKs/IPAs, build output, logs etc. are all outside this.
-#  The rules further down still filter what's INSIDE work/server and work/tools.
+#  TRACKED — the repository ROOT is tracked as-is. Nothing at the root is
+#  blanket-ignored any more, so root-level files such as database.py, tools/,
+#  server/ and any script or folder you drop at the top level show up in
+#  `git status` normally.
+#
+#  The rules further down still exclude secrets (private keys, certs), Niantic
+#  app builds and generated/runtime output. Those are deliberate — see the
+#  SECURITY and PUBLISH sections below.
 # ============================================================================
-/*
-!/.gitignore
-!/README.md
-!/work/
-/work/*
-!/work/server/
-!/work/tools/
 
 # ============================================================================
 #  DO NOT COMMIT — Niantic copyrighted material (APK, decompiled assets, data)
@@ -18,16 +16,16 @@
 # ============================================================================
 *.apk
 *.idsig
-work/extracted/
-**/game_master.bin
-work/tools/gm_2016.txt
-work/tools/global-metadata.patched.dat
+extracted/
+tools/gm_2016.txt
+tools/global-metadata.patched.dat
 **/global-metadata*.dat
+**/game_master.bin
 
 # ----------------------------------------------------------------------------
 #  SECURITY — never commit private keys / certs (regenerate with gen_certs.py)
 # ----------------------------------------------------------------------------
-work/server/certs/
+server/certs/
 *.key
 *.keystore
 *.srl
@@ -36,33 +34,32 @@ work/server/certs/
 # ----------------------------------------------------------------------------
 #  Third-party tools & generated protobufs (download/build these yourself)
 # ----------------------------------------------------------------------------
-work/tools/POGOProtos-*/
-work/tools/*.jar
-work/tools/*.zip
-work/tools/*.tar.gz
-work/tools/*.bat
-work/tools/*.exe
-work/tools/*.msi
-work/tools/appium-settings.apk
-work/tools/frida-server*
-work/tools/gadget-config.json
+tools/POGOProtos-*/
+tools/*.jar
+tools/*.zip
+tools/*.tar.gz
+tools/*.bat
+tools/*.exe
+tools/*.msi
+tools/appium-settings.apk
+tools/frida-server*
+tools/gadget-config.json
 
 # ----------------------------------------------------------------------------
 #  Build artifacts / caches
 # ----------------------------------------------------------------------------
 __pycache__/
 *.pyc
-work/server/dist/
-work/server/build/
-work/server/*.spec
+server/dist/
+server/build/
+server/*.spec
 
 # ----------------------------------------------------------------------------
 #  Personal screenshots (they show your real location / username)
 # ----------------------------------------------------------------------------
 *.png
-work/*.png
-# ...except our own Bracky artwork, which the server window needs.
-!work/server/brand/*.png
+# ...except our own Windstock artwork, which the server window needs.
+!server/brand/*.png
 
 # Local tooling config (not part of the project)
 .claude/
@@ -78,24 +75,22 @@ Thumbs.db
 #  Packaged builds / distribution snapshots (each a full copy of the tree)
 /RELEASE/
 /SOURCE/
-/server/
 /drive/
-work/PoGO-Server-Ready/
-work/server/dist/
-work/server/build/
+server/dist/
+server/build/
 
-#  Out-of-scope subprojects (their own source lives outside this repo)
-work/goserver/
-work/il2cpp/
-work/mods/
-work/site/
-work/server/site/
+#  Out-of-repo artifacts (their own source lives outside this repo)
+goserver/
+il2cpp/
+mods/
+site/
+server/site/
 
 #  Extracted app/engine data (Niantic copyright, and thousands of files)
-work/unity/
-work/v035/
-work/extracted/
-work/tools/_bundle_cache/
+unity/
+v035/
+extracted/
+tools/_bundle_cache/
 **/bin/Data/
 Start-POI-Exporter.bat
 
@@ -105,11 +100,11 @@ APK&IPA/
 PoGO server but better!/
 
 #  Runtime state, player saves (real usernames = personal data), logs, big data
-work/server/data/
-work/server/assets/
-work/server/assets_ios/
-work/server/assets_plain/
-work/server/photos/
+server/data/
+server/assets/
+server/assets_ios/
+server/assets_plain/
+server/photos/
 *.bin
 *.bak
 *.bak-*
