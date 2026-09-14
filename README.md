@@ -1,25 +1,20 @@
-# ⚡ Windstock — Pokémon GO 0.29 Private Server
+# ⚡ Windstock — Pokémon GO 0.29-35 Private Server
 
-> A from-scratch, fully offline private server for the original **Pokémon GO 0.29.0** (July 2016).
-> The genuine client connects, logs in with any name, and drops you onto a live map of your own
-> neighbourhood. No Niantic account. No internet. No telemetry.
+> A from-scratch, private server for the original **Pokémon GO 0.29.0** (July 2016).
 
-Private servers exist so people can keep playing an old version of the game on their own terms —
-to revisit 2016, to experiment, or to play somewhere with no official servers involved. This one
-is an **independent reverse-engineering project**: it reimplements the protocol the client already
-speaks and answers it locally.
+> Private servers exist so people can keep playing an old version of the game on their own terms —
+> to revisit 2016, to experiment, or to play somewhere with no official servers involved. This one
+> is an **independent reverse-engineering project**: it reimplements the protocol the client already
+> speaks and answers it locally.
+> **When Mohammed bin Salman bought Pokemon GO (the dictator of Saudi Arabia), we knew it was ruined. So we did something remarkable. Here it is.**
 
-> [!IMPORTANT]
-> **You supply the client.** No part of Niantic's app, assets, or data ships here — you provide
-> your own legally obtained 0.29 client and, for 3D models, your own genuine 2016 asset bundles.
-> See [Legal](#-legal--disclaimer).
 
 | | |
 |---|---|
 | 🎮 **Client** | Pokémon GO 0.29.0 (July 2016) · 0.35 also supported |
-| 🌐 **Network** | Fully offline · LAN · Tailscale |
-| 🧪 **Status** | Playable — catching, PokéStops, Gyms, Shop, progression |
-| 🐍 **Runtime** | Python 3, stdlib-first (one required package) |
+| 🌐 **Network** | MITM, LAN |
+| 🧪 **Status** | Playable — catching, PokéStops, Gyms, every single request supported|
+| 🐍 **Runtime** | Python 3 |
 
 ---
 
@@ -41,7 +36,7 @@ speaks and answers it locally.
 
 ## ✨ What works
 
-- 🔑 **Fake login** — any username and password. No PTC, no Google, no internet.
+- 🔑 **Login** — any username and password.
 - 🧬 **Full boot handshake** — the exact 0.29 RPC sequence (redirect → player → remote config →
   settings → asset digest → item templates → map), with field numbers checked against the live client.
 - 📡 **Every request the client can send gets a real answer.** All 71 request types in the 0.29
@@ -68,7 +63,7 @@ speaks and answers it locally.
 - 🧊 **3D Pokémon models render** *when you supply genuine 2016 asset bundles* — the full pipeline is
   implemented (`GET_ASSET_DIGEST` → `GET_DOWNLOAD_URLS` → serve the encrypted bundle). Without them
   the map, catching, stops and gyms all still work; creatures fall back to the client's 2D icons.
-- 🧭 **World Manager** — a local web UI (`http://127.0.0.1:8080`) to place and manage PokéStops and
+- 🧭 **World Manager** — a local web UI (`http://localhost:8080`) to place and manage PokéStops and
   Gyms, download real POIs, run events, and inspect server state.
 - 💬 **Help Center** and a public status/site page.
 - 📦 **One-file launcher** and an optional standalone `.exe` (no Python needed on the host).
@@ -92,8 +87,7 @@ speaks and answers it locally.
 - 🍎 **iPhone (0.29 and 0.35):** works with the stock client — no patching — reached over Tailscale.
 - 🤖 **Android (0.29):** needs a one-time static metadata patch to the APK (see
   [Reverse engineering](#-reverse-engineering-the-client)); no root, user-installed CA.
-- 🤖 **Android (0.35):** also supported, through a plain-HTTP SSO bridge plus RPC over a real
-  certificate.
+- 🤖 **Android (0.35):** also supported, through an APK patcher
 
 Step-by-step device guides live in `src/server/DEVICE_SETUP.md`, `src/server/RUN.md` and
 `src/server/VPN.md`.
@@ -105,16 +99,9 @@ Step-by-step device guides live in `src/server/DEVICE_SETUP.md`, `src/server/RUN
   server sends, so the outcome, HP and prestige are ours to control — but the defender's attack
   animation is up to the client. The fights are real; the animation can't change without
   disassembling the client.
-- **3D models need genuine 2016 bundles** (see above) — that data isn't available. Not a bug.
-- The in-game **Journal** is filled in a format that isn't documented for this version, so it's
-  left blank.
-- Requests for features the 0.29 client doesn't contain (trading, Pokémon GO Plus, item/gem packs)
-  have no message layout in the client, so there is nothing to answer.
-
+- **3D models need genuine 2016 bundles** you can DM (direct message) me on Discord at `@chucny` or contact me at `koppispoke@gmail.com` if you need assets from public archives.
 ## 🧠 How it works
 
-The client talks **HTTPS + Protocol Buffers** to `pgorelease.nianticlabs.com` and
-`sso.pokemon.com`. We point those hostnames at this PC and answer them ourselves.
 
 | Component | File | Role |
 |---|---|---|
@@ -236,12 +223,7 @@ py database.py backup_all # one-shot
 
 ## 🔬 Reverse engineering the client
 
-0.29 was built for Android API 23 and below, so on modern Android its native plugin fails to load
-(`System.load` needs an absolute path). Frida and x86 emulators didn't work (Samsung Knox and
-ARM-translation crashes); the fix that worked is a **static il2cpp metadata patch** that points the
-`libNianticLabsPlugin.so` string to an absolute path — no root, no Frida. Scripts:
-`src/tools/metadata_patch.py` and `src/tools/repackage_metadata.py`. You run these on your own APK;
-the patched APK is never distributed.
+Reverse engineering the client took a long time, and thanks to `chucny` and `bracky-dev`, it has now been done up to 100%. The server supports every single request from client and handles them properly.
 
 ## 🗂️ Repository layout
 
@@ -263,9 +245,7 @@ player saves, runtime data and logs, packaged builds, and third-party tools.
 
 This is an independent, educational reverse-engineering project for **personal, offline** use with
 a client you already own. It includes **none** of Niantic's copyrighted code, assets, or data — only
-original interoperability code. "Pokémon" and "Pokémon GO" are trademarks of Nintendo / The Pokémon
-Company / Niantic; this project is not affiliated with or endorsed by them. Don't redistribute
-their APK or assets.
+original interoperability code. The `/src/server/game_master.bin` is a custom-made file from a text file and a script, not an original protobuf dump.
 
 ## 🙌 Credits
 
@@ -276,3 +256,10 @@ their APK or assets.
   cross-check response layouts (timestamps, GlobalSettings, defender bonus)
 - [apk-mitm](https://github.com/shroudedcode/apk-mitm) — the patcher's certificate-pinning removal
 - The community 2016 GAME_MASTER dump
+
+## ⌨️ Developers
+- `Chucny` - main developer and owner
+- `bracky-dev` main developer and owner
+
+## ⚖️ License
+`This project is licensed under the GPL 3.0 License. See LICENSE file for details.`
