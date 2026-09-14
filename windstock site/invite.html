@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Use a Project Windstock invite to validate access and join the private Discord server." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Join — Project Windstock" />
+  <meta property="og:description" content="Validate your private invite, connect Discord, and find your way into the Windstock community." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Join — Project Windstock</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="index.html#world">The world</a>
+            <a class="nav-link" href="events.html">Events</a>
+            <a class="nav-link" href="patcher.html">Patcher</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <a class="nav-link active" href="invite.html" aria-current="page">Join</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="invite-main mx-auto max-w-6xl px-6 py-16">
+        <section class="invite-intro">
+          <div class="invite-intro-copy">
+            <div class="eyebrow-row"><span class="eyebrow-dot"></span><p class="eyebrow">Private access · One invite per trainer</p></div>
+            <h1 class="invite-title">Find your way<br /><em>inside.</em></h1>
+            <p class="invite-lede">Have an invite? Validate it here, then connect your Discord account. If it checks out, the server admits you automatically.</p>
+          </div>
+          <div class="invite-sigil" aria-hidden="true">
+            <span class="invite-sigil-ring invite-sigil-ring-one"></span>
+            <span class="invite-sigil-ring invite-sigil-ring-two"></span>
+            <span class="invite-sigil-spark invite-sigil-spark-one">✦</span>
+            <span class="invite-sigil-spark invite-sigil-spark-two">✦</span>
+            <div class="invite-sigil-core"><img src="assets/windstock-mark.png" alt="" width="52" height="52" /><strong>JOIN</strong><small>your world awaits</small></div>
+          </div>
+        </section>
+
+        <section class="invite-panel" aria-labelledby="invite-panel-title">
+          <div class="invite-panel-copy">
+            <p class="section-kicker">The quiet doorway</p>
+            <h2 id="invite-panel-title">One code.<br /><em>One world.</em></h2>
+            <p>Invite codes are checked against the private access list before Discord ever sees you. No password is collected here, and your code is only used to start this join flow.</p>
+            <ol class="invite-flow">
+              <li><span>01</span><p><strong>Validate</strong><br />We check your invite.</p></li>
+              <li><span>02</span><p><strong>Connect</strong><br />Discord confirms who you are.</p></li>
+              <li><span>03</span><p><strong>Wander in</strong><br />The server lets you through.</p></li>
+            </ol>
+          </div>
+          <div class="invite-form-wrap">
+            <form id="inviteForm" class="invite-form">
+              <label for="inviteCode">Private invite code</label>
+              <div class="invite-field">
+                <input id="inviteCode" name="code" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="WIND-XXXXXXXX-XX" maxlength="40" required />
+                <button type="submit" class="button button-primary motion-button" id="inviteSubmit"><span data-button-label>Validate invite</span><span aria-hidden="true">↗</span></button>
+              </div>
+              <p class="invite-hint">Codes are one-time by default. Your browser will open Discord after validation.</p>
+              <div id="inviteStatus" class="invite-status" role="status" aria-live="polite" hidden></div>
+            </form>
+          </div>
+        </section>
+
+        <section class="invite-footnote">
+          <div class="invite-footnote-mark" aria-hidden="true">✦</div>
+          <div><p class="section-kicker">A small note</p><p>Discord access is handled by the server, not by this page. The bot token and invite database never leave the backend.</p></div>
+          <a class="button button-quiet" href="status.html"><span>Check the world</span><span aria-hidden="true">→</span></a>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/invite.js"></script>
+  <script src="assets/motion.js"></script>
+</body>
+</html>

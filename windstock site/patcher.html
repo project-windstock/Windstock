@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="The Project Windstock client patcher is currently a work in progress." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Client Patcher — Project Windstock" />
+  <meta property="og:description" content="A desktop patcher for Project Windstock is in the works." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Client Patcher — Project Windstock</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="index.html#world">The world</a>
+            <a class="nav-link" href="events.html">Events</a>
+            <a class="nav-link active" href="patcher.html" aria-current="page">Patcher</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <span class="nav-note hidden sm:inline">Private server</span>
+          </nav>
+        </div>
+      </header>
+
+      <main class="patcher-main mx-auto max-w-6xl px-6 py-16">
+        <section class="patcher-intro">
+          <div class="patcher-intro-copy">
+            <div class="eyebrow-row"><span class="eyebrow-dot"></span><p class="eyebrow">Client tools · Work in progress</p></div>
+            <h1 class="patcher-title">Your shortcut<br /><em>to the world.</em></h1>
+            <p class="patcher-lede">A little desktop launcher is being built for trainers who want to spend less time fiddling with files and more time out catching things.</p>
+          </div>
+          <div class="patcher-device" aria-hidden="true">
+            <span class="patcher-device-orbit patcher-device-orbit-one"></span>
+            <span class="patcher-device-orbit patcher-device-orbit-two"></span>
+            <span class="patcher-device-spark patcher-device-spark-one">✦</span>
+            <span class="patcher-device-spark patcher-device-spark-two">✦</span>
+            <div class="patcher-window">
+              <div class="patcher-window-bar"><span></span><span></span><span></span><i>windstock.exe</i></div>
+              <div class="patcher-window-body"><div class="patcher-window-mark"><img src="assets/windstock-mark.png" alt="" /></div><strong>Project Windstock</strong><small>finding your way in...</small><div class="patcher-window-line"><span></span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="patcher-status-card" aria-labelledby="patcher-status-title">
+          <div class="patcher-status-art" aria-hidden="true"><span class="patcher-sun"></span><span class="patcher-grid-line patcher-grid-line-one"></span><span class="patcher-grid-line patcher-grid-line-two"></span><span class="patcher-mountain patcher-mountain-back"></span><span class="patcher-mountain patcher-mountain-front"></span><span class="patcher-road"></span></div>
+          <div class="patcher-status-copy">
+            <div class="event-meta"><span class="event-tag">WIP</span><span>Not ready to download</span></div>
+            <h2 id="patcher-status-title">The patcher is<br /><em>on its way.</em></h2>
+            <p>The first version will check for updates, patch the client safely, and get you into Windstock without making you think about the plumbing.</p>
+            <div class="patcher-build"><div><span>Current build</span><strong>0.1.0 · concept</strong></div><div><span>Next milestone</span><strong>First playable launcher</strong></div></div>
+            <div class="patcher-progress-label"><span>Build status</span><strong>In the works</strong></div>
+            <div class="patcher-progress" role="progressbar" aria-label="Patcher development progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="34"><span></span></div>
+            <p class="patcher-progress-note">There isn’t a download button yet — this page is the preview.</p>
+          </div>
+          <div class="patcher-status-number" aria-hidden="true">02</div>
+        </section>
+
+        <section class="patcher-features" aria-labelledby="patcher-features-title">
+          <div class="patcher-section-heading"><div><p class="section-kicker">When it lands</p><h2 id="patcher-features-title" class="section-title">Less setup.<br />More <em>adventure.</em></h2></div><p class="section-intro">The patcher will be small, calm, and very good at doing the boring parts for you.</p></div>
+          <div class="patcher-feature-grid">
+            <article class="patcher-feature patcher-feature-coral"><span class="patcher-feature-number">01</span><div class="patcher-feature-icon patcher-icon-refresh" aria-hidden="true">↻</div><h3>Check for updates</h3><p>Open the launcher and it will know whether there’s a newer build waiting.</p></article>
+            <article class="patcher-feature patcher-feature-sage"><span class="patcher-feature-number">02</span><div class="patcher-feature-icon patcher-icon-shield" aria-hidden="true">✦</div><h3>Patch safely</h3><p>Download only what changed, verify the files, and keep your local client tidy.</p></article>
+            <article class="patcher-feature patcher-feature-blue"><span class="patcher-feature-number">03</span><div class="patcher-feature-icon patcher-icon-launch" aria-hidden="true">↗</div><h3>Launch ready</h3><p>When everything is current, one click should take you straight into the world.</p></article>
+          </div>
+        </section>
+
+        <section class="patcher-steps" aria-labelledby="patcher-steps-title">
+          <div class="patcher-steps-art" aria-hidden="true"><span class="patcher-steps-ring"></span><span class="patcher-steps-star">✦</span></div>
+          <div><p class="section-kicker">The plan</p><h2 id="patcher-steps-title">A simple<br /><em>three-step</em> ritual.</h2></div>
+          <div class="patcher-step-list"><div><span>01</span><p><strong>Open</strong><br />Start the patcher.</p></div><div><span>02</span><p><strong>Update</strong><br />Let it do its thing.</p></div><div><span>03</span><p><strong>Wander</strong><br />Go catch something.</p></div></div>
+        </section>
+
+        <section class="patcher-cta">
+          <div><p class="section-kicker">Until then</p><h2>Keep the old client<br /><em>close by.</em></h2></div>
+          <p>The patcher is still being shaped. For now, use the client you already have and check the server page if you’re heading out.</p>
+          <a class="button button-primary" href="status.html"><span>Check server status</span><span aria-hidden="true">↗</span></a>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/motion.js"></script>
+</body>
+</html>

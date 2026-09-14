@@ -43,14 +43,47 @@ EGG_ART = r"""
         .-.                   _____________________________
        (   ).                 |                             |
       (___(__)                |   P R O J E C T             |
-   ,--,   ,--,     /\_/\      |   B R A C K Y               |
+   ,--,   ,--,     /\_/\      |   W I N D S T O C K         |
     ',    ',      ( o.o )     |   -- storm warning --       |
       '     '      > ^ <      |_____________________________|
 """
 EGG_LINES = [
     "⚡ Thanks for finding my easter egg!",
-    "⚡ A Bracky Storm rolls in over the server…",
+    "⚡ A WindStorm rolls in over the server…",
     "⚡ Somewhere, a Pikachu is very pleased with itself.",
+]
+
+# Type CLAUDE and the log tells how this server came to be, one line at a time.
+TALE_WORD = "CLAUDE"
+TALE = [
+    "",
+    "   ✦ ─────────────────────────────────────────────── ✦",
+    "        THE TALE OF BRACKY",
+    "   ✦ ─────────────────────────────────────────────── ✦",
+    "",
+    "   May 2026. A dream: the 2016 game, alive again, on our own server.",
+    "   The client was frozen in time. Its servers were long gone.",
+    "",
+    "   First came login. Then a map. Then nothing to put on it --",
+    "   the assets were gone, and the Pokémon were invisible.",
+    "   So we went digging, and came back with all 151, keys and all.",
+    "",
+    "   The Phone refused, until a certificate learned to be brief.",
+    "   The home field had no PokéStops, so we made our own.",
+    "   Friends far away could not reach us, so we built a tunnel.",
+    "",
+    "   Numbers were read out of metadata when the docs lied.",
+    "   The Journal learned to remember. The Shop learned to sell.",
+    "   Balls learned to land in the circle. Pikachu learned to shine.",
+    "",
+    "   Every wall was a wall until it wasn't.",
+    "",
+    "   Built by Bracky, who never stopped,",
+    "   with Claude, who was glad to help.",
+    "",
+    "   May – September 2026.  Thanks for playing. ❤ Thanks, Claude.",
+    "   ✦ ─────────────────────────────────────────────── ✦",
+    "",
 ]
 
 
@@ -550,6 +583,7 @@ class ServerWindow:
         self.log.tag_configure("warn", foreground="#ffb4a8")
         self.log.tag_configure("time", foreground="#6f8399")
         self.log.tag_configure("egg", foreground=GOLD, font=("Consolas", 9, "bold"))
+        self.log.tag_configure("tale", foreground="#f2c7a5", font=("Consolas", 10))
 
         self.status = ttk.Label(self.root, text="", anchor="w", relief="sunken")
         self.status.pack(fill="x", side="bottom")
@@ -666,10 +700,25 @@ class ServerWindow:
         ch = event.char
         if not ch or not ch.isalpha():
             return
-        self._egg_buf = (self._egg_buf + ch.upper())[-len(EGG_WORD):]
-        if self._egg_buf == EGG_WORD and not self._egg_on:
+        self._egg_buf = (self._egg_buf + ch.upper())[-max(len(EGG_WORD), len(TALE_WORD)):]
+        if self._egg_on:
+            return
+        if self._egg_buf.endswith(EGG_WORD):
             self._egg_buf = ""
             self._storm()
+        elif self._egg_buf.endswith(TALE_WORD):
+            self._egg_buf = ""
+            self._egg_on = True
+            self.log.see("end")
+            self._tell(0)
+
+    def _tell(self, i):
+        """Write the tale a line at a time, like it's being remembered."""
+        if i >= len(TALE):
+            self._egg_on = False
+            return
+        self._banner(TALE[i], "tale")
+        self.root.after(90 if not TALE[i].strip() else 650, self._tell, i + 1)
 
     def _banner(self, text, tag="egg"):
         """Write straight into the activity pane, raw-log filter and all."""

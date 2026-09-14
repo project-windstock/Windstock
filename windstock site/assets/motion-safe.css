@@ -1,0 +1,181 @@
+/* Project Windstock — crash-safe motion budget */
+
+/* Keep the visual texture, but avoid continuously repainting full-screen layers. */
+body::before {
+  opacity: .08 !important;
+  mix-blend-mode: normal !important;
+}
+
+.site-header {
+  background: var(--background) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.hero-section::before {
+  opacity: .45 !important;
+  mix-blend-mode: normal !important;
+}
+
+.hero-image {
+  animation: none !important;
+  filter: saturate(.62) contrast(.9) !important;
+  mix-blend-mode: normal !important;
+  transform: none !important;
+}
+
+.hero-glow {
+  animation: none !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+.hero-copy > *,
+.motion-reveal {
+  filter: none !important;
+}
+
+.motion-button::before {
+  filter: none !important;
+  opacity: .2;
+}
+
+/* The old stylesheet contains many ambient loops. Stop them as a group, then
+   selectively restore only small transform/opacity loops below. */
+body.motion-enabled * {
+  animation: none !important;
+}
+
+body.motion-enabled *::before,
+body.motion-enabled *::after {
+  animation: none !important;
+}
+
+body.motion-page-hidden,
+body.motion-page-hidden * {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body.motion-enabled .page-leaving .page-transition {
+    animation: safe-page-wipe .46s cubic-bezier(.7, 0, .2, 1.15) both !important;
+  }
+
+  body.motion-enabled .hero-orbit {
+    animation: safe-hero-orbit 12s ease-in-out .5s infinite alternate !important;
+  }
+
+  body.motion-enabled .hero-title em {
+    animation: safe-word-flare 6s ease-in-out 1.1s infinite !important;
+  }
+
+  body.motion-enabled .hero-badge {
+    animation: safe-badge-float 7s ease-in-out 1s infinite alternate !important;
+  }
+
+  body.motion-enabled .orbit-spark {
+    animation: safe-spark 3.8s ease-in-out infinite !important;
+  }
+
+  body.motion-enabled .feature-card-large .terrain-sun {
+    animation: safe-sun 6s ease-in-out infinite alternate !important;
+  }
+
+  body.motion-enabled .feature-icon,
+  body.motion-enabled .patcher-feature-icon {
+    animation: safe-icon 8s ease-in-out infinite alternate !important;
+  }
+
+  body.motion-enabled .patcher-device {
+    animation: safe-device 10s ease-in-out .6s infinite alternate !important;
+  }
+
+  body.motion-enabled .patcher-sun {
+    animation: safe-sun 7s ease-in-out infinite alternate !important;
+  }
+
+  body.motion-enabled .patcher-steps-ring {
+    animation: safe-ring 18s linear infinite !important;
+  }
+
+  body.motion-enabled .status-pulse {
+    animation: safe-status-pulse 2.4s ease-in-out infinite !important;
+  }
+
+  body.motion-enabled .live-dot {
+    animation: safe-live-dot 2s ease-in-out infinite !important;
+  }
+}
+
+@keyframes safe-page-wipe {
+  0% { transform: translateX(102%); }
+  58% { transform: translateX(-2%); }
+  100% { transform: translateX(-105%); }
+}
+
+@keyframes safe-hero-orbit {
+  from { opacity: .72; transform: rotate(-7deg) translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: rotate(-10deg) translate3d(0, -10px, 0); }
+}
+
+@keyframes safe-word-flare {
+  0%, 100% { opacity: .96; transform: rotate(-1deg) scale(1); }
+  50% { opacity: 1; transform: rotate(1deg) scale(1.025); }
+}
+
+@keyframes safe-badge-float {
+  from { transform: translate(-50%, -50%) rotate(9deg); }
+  to { transform: translate(-50%, calc(-50% - 7px)) rotate(13deg); }
+}
+
+@keyframes safe-spark {
+  0%, 100% { opacity: .58; transform: scale(.78); }
+  45% { opacity: 1; transform: scale(1.4); }
+  70% { opacity: .76; transform: scale(1); }
+}
+
+@keyframes safe-sun {
+  from { opacity: .82; transform: scale(.92); }
+  to { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes safe-icon {
+  from { transform: rotate(-4deg) translateY(0); }
+  to { transform: rotate(5deg) translateY(-3px); }
+}
+
+@keyframes safe-device {
+  from { transform: rotate(4deg) translate3d(0, 3px, 0); }
+  to { transform: rotate(1deg) translate3d(-5px, -8px, 0); }
+}
+
+@keyframes safe-ring {
+  to { transform: rotate(360deg) scaleX(.55); }
+}
+
+@keyframes safe-status-pulse {
+  0%, 100% { opacity: .82; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes safe-live-dot {
+  0%, 100% { opacity: .65; transform: scale(.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  body.motion-enabled *,
+  body.motion-enabled *::before,
+  body.motion-enabled *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .motion-reveal,
+  .motion-reveal.is-visible {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+}

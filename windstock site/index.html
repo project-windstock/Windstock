@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Project Windstock is a private, offline Pokémon world: no accounts, no ads, no real-money purchases. Log in from the game with any trainer name and go catch 'em all." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Project Windstock — Private Offline Pokémon World" />
+  <meta property="og:description" content="A private passion-project Pokémon world. Log in from the game client with any trainer name — no password, no account." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="preload" as="image" href="assets/hero.jpg" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Project Windstock — Private Offline Pokémon Go Server</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html" aria-current="page">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="#world">The world</a>
+            <a class="nav-link events-link-static" href="events.html">Events</a>
+            <a class="nav-link" href="patcher.html">Patcher</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <span class="nav-note hidden sm:inline">Private server</span>
+          </nav>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero-section relative overflow-hidden border-b border-border/60">
+          <img src="assets/hero.jpg" alt="Mountain ridges at dawn" width="1536" height="1024" class="hero-image absolute inset-0 size-full object-cover" />
+          <div class="hero-wash absolute inset-0"></div>
+          <div class="hero-glow hero-glow-one" aria-hidden="true"></div>
+          <div class="hero-glow hero-glow-two" aria-hidden="true"></div>
+          <div class="wind-gust" aria-hidden="true"><span style="top: 26%; animation-delay: .1s"></span><span style="top: 43%; animation-delay: .28s"></span><span style="top: 67%; animation-delay: .46s"></span></div>
+
+          <div class="hero-content relative mx-auto max-w-6xl px-6">
+            <div class="hero-copy">
+              <div class="eyebrow-row">
+                <span class="eyebrow-dot"></span>
+                <p class="eyebrow">Invite-only beta · A world of your own</p>
+              </div>
+              <h1 class="hero-title">A little more <em>magic</em> in your day.</h1>
+              <p class="hero-lede">A private, offline Pokémon Go server for curious trainers, quiet adventures, and the joy of finding something rare around the corner.</p>
+              <div class="hero-actions">
+                <a class="button button-primary" href="#world"><span>Explore the world</span><span aria-hidden="true">↗</span></a>
+                <a class="button button-quiet" href="status.html">Check server status <span aria-hidden="true">→</span></a>
+              </div>
+              <div class="trust-row" aria-label="Project promises">
+                <span><strong>01</strong> No accounts</span>
+                <span><strong>02</strong> No ads, ever.</span>
+                <span><strong>03</strong> No in game purchases</span>
+              </div>
+            </div>
+
+            <div class="hero-orbit" aria-hidden="true">
+              <span class="orbit orbit-one"></span>
+              <span class="orbit orbit-two"></span>
+              <span class="orbit orbit-three"></span>
+              <span class="orbit-spark spark-one"></span>
+              <span class="orbit-spark spark-two"></span>
+              <span class="orbit-spark spark-three"></span>
+              <div class="hero-badge">
+                <span class="hero-badge-label">Windstock</span>
+                <span class="hero-badge-value">01</span>
+                <span class="hero-badge-caption">find your way</span>
+              </div>
+            </div>
+          </div>
+          <div class="scroll-cue" aria-hidden="true"><span></span><small>Scroll to discover</small></div>
+        </section>
+
+        <section id="world" class="world-section mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Your own pocket universe</p>
+              <h2 class="section-title">The world is waiting.</h2>
+            </div>
+            <p class="section-intro">Built for the parts of Pokémon GO we still talk about: a walk with no destination, a lucky spawn, and the tiny thrill of a PokéStop just ahead.</p>
+          </div>
+
+          <div class="feature-grid mt-10">
+            <article class="feature-card feature-card-large feature-card-terrain">
+              <div class="feature-card-art terrain-art" aria-hidden="true"><span class="terrain-sun"></span><span class="terrain-hill terrain-hill-back"></span><span class="terrain-hill terrain-hill-front"></span><span class="terrain-path"></span></div>
+              <div class="feature-card-body"><span class="card-index">01 / 06</span><h3>Go where the map takes you.</h3><p>Wild Pokémon respond to the terrain around you — water, woods, city streets, and the changing light of day.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-coral">
+              <div class="feature-icon icon-ball" aria-hidden="true"><span></span></div>
+              <div class="feature-card-body"><span class="card-index">02 / 06</span><h3>Log in. Just like that.</h3><p>Choose any trainer name from the game. No password, no account, no ceremony.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-sage">
+              <div class="feature-icon icon-leaf" aria-hidden="true"><span></span><i></i></div>
+              <div class="feature-card-body"><span class="card-index">03 / 06</span><h3>Find your little places.</h3><p>Nests shift every few weeks. The places you return to become part of your story.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-blue">
+              <div class="feature-icon icon-egg" aria-hidden="true"><span></span></div>
+              <div class="feature-card-body"><span class="card-index">04 / 06</span><h3>Walk it out.</h3><p>Drop an egg in an incubator, head outside, and let the distance do its thing.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-ink">
+              <div class="feature-card-body"><span class="card-index">05 / 06</span><h3>Make your mark.</h3><p>Spin, battle, represent your team, and leave the map a little more yours than you found it.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+              <div class="ink-rings" aria-hidden="true"><span></span><span></span><span></span></div>
+            </article>
+            <article class="feature-card feature-card-sand">
+              <div class="feature-card-body"><span class="card-index">06 / 06</span><h3>Keep the good stuff.</h3><p>PokéCoins unlock useful things in the Shop — earned in-game, never charged to your card.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+              <div class="coin-stack" aria-hidden="true"><span></span><span></span><span></span></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="manifesto-section border-y border-border/60">
+          <div class="manifesto-inner mx-auto max-w-6xl px-6">
+            <div class="manifesto-stamp" aria-hidden="true"><span>Since</span><strong>’16</strong><i>made for wandering</i></div>
+            <div class="manifesto-copy"><p class="section-kicker">The Windstock promise</p><h2>Less noise.<br /><em>More wonder.</em></h2><p>Your server, your rules. Windstock is a passion project built to bring back the feeling of discovery. No feeds to scroll. No pressure to spend. Just a world that rewards looking up.</p></div>
+            <div class="manifesto-list"><div><span>✳</span><p><strong>Be nice.</strong><br />This is a world we share.</p></div><div><span>✳</span><p><strong>Keep it here.</strong><br />No drama, just fun.</p></div><div><span>✳</span><p><strong>Progress follows you.</strong><br />Switch devices without starting over.</p></div></div>
+          </div>
+        </section>
+
+        <section class="closing-section mx-auto max-w-3xl px-6 py-24 text-center">
+          <div class="closing-mark" aria-hidden="true"><img src="assets/windstock-mark.png" alt="" width="52" height="52" /></div>
+          <p class="section-kicker">Fine print (very little of it)</p>
+          <h2>Ready when you are,<br /><em>Trainer.</em></h2>
+          <p class="closing-copy">No Niantic, no real-money purchases, and no data collection. Project Windstock is a small passion project for reviving the good old times.</p>
+          <a class="button button-primary" href="status.html">See if the world is online <span aria-hidden="true">↗</span></a>
+          <p class="closing-note">Happy catching — go catch 'em all!</p>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/motion.js"></script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Upcoming community events in Project Windstock: special spawns, walking weekends, raid nights, and more." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Events — Project Windstock" />
+  <meta property="og:description" content="See what is happening next in the Project Windstock world." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Events — Project Windstock</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="index.html#world">The world</a>
+            <a class="nav-link active" href="events.html" aria-current="page">Events</a>
+            <a class="nav-link" href="patcher.html">Patcher</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <span class="nav-note hidden sm:inline">Private server</span>
+          </nav>
+        </div>
+      </header>
+
+      <main class="events-main mx-auto max-w-6xl px-6 py-16">
+        <section class="events-intro">
+          <div class="events-intro-copy">
+            <div class="eyebrow-row"><span class="eyebrow-dot"></span><p class="eyebrow">The field guide · Community calendar</p></div>
+            <h1 class="events-title">There’s always<br /><em>something</em> happening.</h1>
+            <p class="events-lede">Special spawns, long walks, friendly battles, and the occasional excuse to check one more PokéStop. Come along when you feel like it.</p>
+          </div>
+          <div class="events-calendar-mark" aria-hidden="true">
+            <span class="calendar-sun"></span>
+            <span class="calendar-ring calendar-ring-one"></span>
+            <span class="calendar-ring calendar-ring-two"></span>
+            <div class="calendar-page"><span>SEP</span><strong>13</strong><i>make a day of it</i></div>
+          </div>
+        </section>
+
+        <section class="featured-event" aria-labelledby="featured-event-title">
+          <div class="featured-event-art" aria-hidden="true"><span class="event-moon"></span><span class="event-cloud event-cloud-one"></span><span class="event-cloud event-cloud-two"></span><span class="event-star event-star-one">✦</span><span class="event-star event-star-two">✦</span><span class="event-hill event-hill-one"></span><span class="event-hill event-hill-two"></span><span class="event-path"></span><span class="event-pokeball"></span></div>
+          <div class="featured-event-copy">
+            <div class="event-meta"><span class="event-tag">Featured event</span><span>September 20–21</span></div>
+            <h2 id="featured-event-title">The Long<br /><em>Walk Weekend</em></h2>
+            <p>Pick a direction and make a day of it. Eggs hatch faster, buddy candy comes easier, and rare wandering Pokémon are more likely to find you.</p>
+            <div class="event-details"><div><span>When</span><strong>All weekend</strong></div><div><span>Where</span><strong>Everywhere</strong></div><div><span>Vibe</span><strong>Go outside</strong></div></div>
+          </div>
+          <div class="featured-event-number" aria-hidden="true">01</div>
+        </section>
+
+        <section class="upcoming-section" aria-labelledby="upcoming-title">
+          <div class="events-section-heading"><div><p class="section-kicker">Mark your calendar</p><h2 id="upcoming-title" class="section-title">Coming up.</h2></div><p class="section-intro">No tickets. No timers to stress over. Just a few reasons to gather your favorite people and go see what’s out there.</p></div>
+          <div class="event-list">
+            <article class="event-row event-row-coral"><div class="event-date"><span>SEP</span><strong>20</strong></div><div class="event-row-copy"><div class="event-meta"><span class="event-tag">Community</span><span>Saturday · 6:00 PM</span></div><h3>Sunset Spawn Hour</h3><p>Meet at golden hour for an hour of boosted spawns and very serious “one more catch” energy.</p></div><div class="event-row-arrow" aria-hidden="true">↗</div></article>
+            <article class="event-row event-row-sage"><div class="event-date"><span>SEP</span><strong>27</strong></div><div class="event-row-copy"><div class="event-meta"><span class="event-tag">Exploration</span><span>All day</span></div><h3>Nest Watch</h3><p>New nests, new routes. Compare notes, trade sightings, and find a new favorite corner of the map.</p></div><div class="event-row-arrow" aria-hidden="true">↗</div></article>
+            <article class="event-row event-row-blue"><div class="event-date"><span>OCT</span><strong>04</strong></div><div class="event-row-copy"><div class="event-meta"><span class="event-tag">Battle night</span><span>Friday · 8:00 PM</span></div><h3>Gym After Dark</h3><p>Bring your best team and your worst jokes. Friendly battles, no leaderboard anxiety.</p></div><div class="event-row-arrow" aria-hidden="true">↗</div></article>
+          </div>
+        </section>
+
+        <section class="event-rhythm-section">
+          <div class="event-rhythm-art" aria-hidden="true"><span class="rhythm-orbit rhythm-orbit-one"></span><span class="rhythm-orbit rhythm-orbit-two"></span><span class="rhythm-star">✦</span></div>
+          <div><p class="section-kicker">A good rhythm</p><h2>Some things are<br /><em>better together.</em></h2></div>
+          <p>Events are a nudge, not a requirement. Log in whenever you want, wander at your own pace, and bring a friend when the stars line up.</p>
+          <a class="button button-primary" href="status.html"><span>Check the world</span><span aria-hidden="true">↗</span></a>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/motion.js"></script>
+</body>
+</html>
