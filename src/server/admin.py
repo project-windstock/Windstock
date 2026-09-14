@@ -115,19 +115,6 @@ Changes apply live &mdash; walk around in game and they'll appear.</div>
   <button onclick="ring()">Build ring</button>
 </div>
 
-<h2>PokeStop Loot</h2>
-<div class="list" id="loot"></div>
-<div class="bar">
-  <button onclick="lootAdd()">+ Add item</button>
-  <label class="inline-label">Items per spin
-    <input id="loot-min" type="number" min="0" max="999" size="3"> &ndash;
-    <input id="loot-max" type="number" min="0" max="999" size="3"></label>
-  <button onclick="lootSave()">Save loot</button>
-  <button onclick="lootLoad()">Revert</button>
-</div>
-<div class="hint" id="loothint">Chance 1 = always drops, 0 = never. The first row tops a
-spin up to the minimum. Applies to the next spin &mdash; no restart.</div>
-
 <h2>Raid</h2>
 <div class="bar">
   <button onclick="raidToggle()" id="b-raid">Raid: off</button>
@@ -158,8 +145,8 @@ at your feet as a wild Pokemon you can catch — you have 10 minutes.</div>
   <button class="go" style="width:auto;padding:10px 26px" onclick="lootSave()">Save loot table</button>
 </div>
 <div class="hint" id="loothint">What every PokeStop spin can hand out. Balls and revives
-always drop; berries and the specials are rolled. Chance 0 rows (Master Ball, Nanab/
-Wepear/Pinap) are switched off until you raise their chance.</div>
+always drop; berries and the specials are rolled. Chance 0 rows (Master Ball, Bluk/
+Nanab/Wepear/Pinap) are switched off until you raise their chance.</div>
 
 <h2>Nominations</h2>
 <div class="hint">Added by players from the in-game Help Center
@@ -253,41 +240,6 @@ async function saveEv(){
   load();
 }
 async function preset(n){await post('/api/preset',{name:n});load();}
-let LOOT_ITEMS=[];
-function lootRow(item,chance,min,max){
-  const row=document.createElement('div'); row.className='bar loot-row';
-  const sel=document.createElement('select');
-  LOOT_ITEMS.forEach(n=>{const o=document.createElement('option');o.value=n;
-    o.textContent=n.replace(/_/g,' ');sel.appendChild(o);});
-  sel.value=item;
-  const num=(v,step,mx,t)=>{const i=document.createElement('input');i.type='number';
-    i.min=0;i.max=mx;i.step=step;i.value=v;i.size=4;i.title=t;return i;};
-  const lbl=t=>{const s=document.createElement('span');s.className='inline-label';s.textContent=t;return s;};
-  const up=document.createElement('button');up.textContent='↑';
-  up.onclick=()=>{if(row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);};
-  const rm=document.createElement('button');rm.textContent='Remove';rm.className='danger';
-  rm.onclick=()=>row.remove();
-  row.append(sel,lbl('chance'),num(chance,0.05,1,'chance'),lbl('count'),
-    num(min,1,999,'min'),lbl('–'),num(max,1,999,'max'),up,rm);
-  $('loot').appendChild(row);
-}
-async function lootLoad(){
-  const r=await post('/api/loot',{}); LOOT_ITEMS=r.items; $('loot').innerHTML='';
-  Object.entries(r.loot||{}).forEach(([n,s])=>lootRow(n,s.chance??1,s.min??1,s.max??1));
-  $('loot-min').value=r.min_items; $('loot-max').value=r.max_items;
-}
-function lootAdd(){lootRow(LOOT_ITEMS[0],0.5,1,1);}
-async function lootSave(){
-  const rows=[...document.querySelectorAll('.loot-row')].map(row=>{
-    const i=row.querySelectorAll('input');
-    return {item:row.querySelector('select').value,chance:+i[0].value,min:+i[1].value,max:+i[2].value};});
-  const names=rows.map(r=>r.item);
-  if(new Set(names).size!==names.length){$('loothint').textContent='✗ Each item can only appear once.';
-    $('loothint').style.color='#ff9a9a';return;}
-  await post('/api/loot',{loot:rows,min_items:+$('loot-min').value,max_items:+$('loot-max').value});
-  await lootLoad();
-  $('loothint').textContent='✓ Saved — applies to the next spin.'; $('loothint').style.color='#7fd1a6';
-}
 function raidPaint(r){
   $('b-raid').textContent = 'Raid: ' + (r.on ? 'ON' : 'off');
   $('b-raid').style.background = r.on ? '#8a2b2b' : '';
@@ -356,7 +308,7 @@ async function giveDust(){
 /* ---- PokeStop loot table editor ---- */
 const LOOT_POOL=[[1,'Poke Ball'],[2,'Great Ball'],[3,'Ultra Ball'],[4,'Master Ball'],
   [101,'Potion'],[102,'Super Potion'],[103,'Hyper Potion'],[104,'Max Potion'],
-  [201,'Revive'],[202,'Max Revive'],[701,'Razz Berry'],[703,'Nanab Berry'],
+  [201,'Revive'],[202,'Max Revive'],  [701,'Razz Berry'],[702,'Bluk Berry'],[703,'Nanab Berry'],
   [704,'Wepear Berry'],[705,'Pinap Berry'],[301,'Lucky Egg'],[401,'Incense'],
   [501,'Lure Module'],[902,'Egg Incubator']];
 function lootPaint(rows){
@@ -476,7 +428,6 @@ DEX.forEach((n,i)=>{if(i){const o=document.createElement('option');o.value=i;
   o.textContent=i+' '+n;$('raid-mon').appendChild(o);}});
 $('raid-mon').value=150;
 post('/api/raid',{}).then(raidPaint);
-lootLoad();
 post('/api/accounts',{}).then(r=>{(r.accounts||[]).forEach(n=>{
   const o=document.createElement('option');o.value=n;$('accounts').appendChild(o);});});
 {const o=document.createElement('option');o.value=0;
@@ -541,8 +492,8 @@ class _Handler(BaseHTTPRequestHandler):
                                    "items_step": CFG.get("storage", "items_upgrade_step"),
                                    "items_cost": CFG.get("storage", "items_upgrade_cost")},
                                "loot": [list(r) for r in protocol.loot_table()],
-                               "loot_min": protocol.LOOT_MIN_ITEMS,
-                               "loot_max": protocol.LOOT_MAX_ITEMS,
+                               "loot_min": CFG.get("pokestops", "min_items_per_spin"),
+                               "loot_max": CFG.get("pokestops", "max_items_per_spin"),
                                "player": {"lat": lat, "lng": lng}})
         self._send(404, "text/plain", "not found")
 
@@ -717,28 +668,6 @@ class _Handler(BaseHTTPRequestHandler):
                        if cfg["on"] else
                        "Raid off — gyms are back to normal and empty")
                 return self._json(dict(cfg, message=msg))
-            if p == "/api/loot":
-                import settings as CFG, protocol as P
-                if "loot" in d:                # save
-                    loot = {}
-                    for row in d.get("loot") or []:
-                        name = str(row.get("item", "")).strip().lower()
-                        if name not in P.LOOT_ITEM_IDS or name in loot:
-                            continue
-                        lo = max(0, min(999, int(row.get("min", 1))))
-                        loot[name] = {
-                            "chance": max(0.0, min(1.0, float(row.get("chance", 1)))),
-                            "min": lo,
-                            "max": max(lo, min(999, int(row.get("max", lo))))}
-                    lo = max(0, min(999, int(d.get("min_items", 0))))
-                    CFG.set_values("pokestops", {
-                        "loot": loot, "min_items_per_spin": lo,
-                        "max_items_per_spin": max(lo, min(999, int(d.get("max_items", lo))))})
-                return self._json({
-                    "loot": CFG.get("pokestops", "loot"),
-                    "min_items": CFG.get("pokestops", "min_items_per_spin"),
-                    "max_items": CFG.get("pokestops", "max_items_per_spin"),
-                    "items": list(P.LOOT_ITEM_IDS)})
             if p == "/api/accounts":
                 import world
                 return self._json({"accounts": world.account_names()})
