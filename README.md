@@ -1,5 +1,7 @@
 # ⚡ Windstock — a Pokémon GO 0.29-35 Private Server
 
+<table><tr><td align="center" width="150"><a href="https://github.com/chucny"><img src="https://avatars.githubusercontent.com/u/166989589?s=400&u=29dab21878c996ebb0244c02ca2610f3bf0986b2&v=4" width="70" height="70" style="border-radius:50%;border:3px solid #7c3aed" alt="Chucny"><br><br><img src="https://img.shields.io/badge/CHUCNY-7C3AED?style=for-the-badge&logo=github&logoColor=white" alt="Chucny"><br><sub><b>🚀 Developer</b></sub></a></td><td align="center" width="150"><a href="https://github.com/bracky-dev"><img src="https://avatars.githubusercontent.com/u/263197327?v=4" width="70" height="70" style="border-radius:50%;border:3px solid #06b6d4" alt="Bracky-dev"><br><br><img src="https://img.shields.io/badge/BRACKY--DEV-06B6D4?style=for-the-badge&logo=github&logoColor=white" alt="Bracky-dev"><br><sub><b>🚀 Developer</b></sub></a></td></tr></table>
+
 > A from-scratch, private server for the original **Pokémon GO 0.29.0** (July 2016).
 > 
 > **The corporate suits in Saudi Arabia, Mohammed bin Salman and sovereign wealth funds thought they could buy our nostalgia, lock it behind a paywall, and strip away the soul of what made July 2016 magic.**
