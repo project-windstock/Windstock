@@ -140,6 +140,7 @@ dependencies with the bundled installer — it handles Linux, Windows and macOS:
 ```bash
 py src/scripts/DOWNLOAD.py
 ```
+Or alternatively, install dependencies manually (recommended)
 
 On Linux it installs system-wide via `sudo` by default; pass `--user`, `--venv` or `--no-sudo` to
 change that. `--check`, `--list` and `--dry-run` are available too.
