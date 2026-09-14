@@ -411,6 +411,27 @@ def new_uid(seed=0):
         return base if base and base not in used else _fresh_uid(used)
 
 
+# (username, encounter_id) -> the uid that encounter's Pokemon will keep. Chosen
+# ONCE, at the encounter, so the catch reply names the same id the catch screen
+# showed; otherwise a taken id got replaced at catch time and the post-catch
+# summary never opened.
+ENCOUNTER_UIDS = {}
+
+
+def encounter_uid(encounter_id, forget=False):
+    key = (current().username, int(encounter_id))
+    with _lock:
+        uid = ENCOUNTER_UIDS.get(key)
+        if uid is None:
+            uid = new_uid(encounter_id)
+            if len(ENCOUNTER_UIDS) > 5000:
+                ENCOUNTER_UIDS.clear()
+            ENCOUNTER_UIDS[key] = uid
+        if forget:
+            ENCOUNTER_UIDS.pop(key, None)
+        return uid
+
+
 def use(username):
     """Make `username` the account for this request (called by rpc.py)."""
     name = username or "player"
@@ -517,6 +538,25 @@ DESPAWNED = {}                     # encounter_id -> expiry_ms
 # Lures are attached to a FORT and are visible to everyone, so they live in the
 # shared world rather than on one player. fort_id -> {item, expires_ms, by}
 FORT_MODIFIERS = {}
+# Spun stops are PER PLAYER: (username, fort_id) -> cooldown_complete_ms. The map
+# has to keep reporting the cooldown, or the next map refresh repaints the stop blue.
+SPIN_COOLDOWNS = {}
+
+
+def set_spin_cooldown(fort_id, until_ms):
+    with _lock:
+        SPIN_COOLDOWNS[(current().username, fort_id)] = int(until_ms)
+
+
+def spin_cooldown(fort_id):
+    now = int(time.time() * 1000)
+    with _lock:
+        key = (current().username, fort_id)
+        until = SPIN_COOLDOWNS.get(key, 0)
+        if until and until <= now:
+            SPIN_COOLDOWNS.pop(key, None)
+            return 0
+        return until
 # "Raid" mode: one boss standing in EVERY gym, shared by all accounts. 0.29 has
 # no raid support at all, so this fakes it with the pieces the client does have --
 # a gym defender under the trainer name "raid" that becomes a catchable wild
@@ -704,12 +744,12 @@ def bag_count():
 
 
 # --- caught pokemon ----------------------------------------------------------
-def add_caught(uid, pokemon_id, cp):
+def add_caught(uid, pokemon_id, cp, **extra):
     p = current()
     with _lock:
         p.DELETED.pop(int(uid), None)     # never report a live Pokemon as deleted
         p.CAUGHT.append({"uid": uid, "pokemon_id": pokemon_id, "cp": cp,
-                         "caught_ms": int(time.time() * 1000)})
+                         "caught_ms": int(time.time() * 1000), **extra})
         p.STATS["pokemons_captured"] += 1
         p.STATS["pokeballs_thrown"] += 1
         p.STATS["unique_pokedex_entries"] = len({c["pokemon_id"] for c in p.CAUGHT})

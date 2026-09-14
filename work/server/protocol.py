@@ -968,8 +968,9 @@ def wild_uid(encounter_id):
     """The individual id a wild Pokemon keeps once caught. The ENCOUNTER must show
     the SAME id (and therefore the same IVs/size) that lands in the bag, or the
     post-catch summary can't find the Pokemon it just caught and never pops up.
-    MUST equal world.new_uid(encounter_id)'s primary output (encounter_id ^ 0xC0FFEE)."""
-    return (int(encounter_id) ^ 0xC0FFEE) & 0x3FFFFFFFFFFFFFFF
+    world.encounter_uid() picks it once and the catch reuses it."""
+    import world
+    return world.encounter_uid(encounter_id)
 
 
 def build_map_pokemon(spawn_id, encounter_id, pokemon_id, lat, lng, expire_ms) -> bytes:
@@ -1513,6 +1514,8 @@ def catch_chance(pokemon_id, cp, ball_id, reticle, berry_mult, hit_position=None
     Everything used to be a guaranteed catch, which made a Pokeball a formality.
     Stronger Pokemon resist, better balls and better throws help, and a Razz
     Berry multiplies it."""
+    if int(ball_id) == 4:                                        # Master Ball never fails
+        return 1.0
     base = _cfg.get("catching", "base_catch_rate", cast=float)
     # a 2000 CP Pokemon should be a real fight; a 100 CP one shouldn't
     base *= max(0.18, 1.0 - (max(0, int(cp)) / 3200.0))
@@ -1612,6 +1615,14 @@ def build_pokemon_data(pokemon_id, uid, cp=500, extra=None) -> bytes:
     _fort = world.deployed_fort(uid)
     if _fort:
         w.string(8, _fort).string(9, e.get("owner") or world.codename() or "")
+    # What a real 2016 server sent for every caught Pokemon (tags read from the 0.35
+    # metadata): pokeball=21, captured_cell_id=22, creation_time_ms=26.
+    if e.get("pokeball"):
+        w.uint(21, int(e["pokeball"]))
+    if e.get("cell"):
+        w.uint(22, int(e["cell"]))
+    if e.get("caught_ms"):
+        w.int_(26, int(e["caught_ms"]))
     if e.get("num_upgrades"):
         w.int_(27, int(e["num_upgrades"]))
     if e.get("favorite"):
@@ -1701,6 +1712,11 @@ def build_fort(fort_id, lat, lng, now_ms, is_gym=False) -> bytes:
         w.bool_(8, True).uint(9, 0).int_(10, points).bool_(11, False)
     else:
         w.bool_(8, True).uint(9, 1)
+        # cooldown_complete_timestamp_ms: without it every map refresh reports the
+        # stop as never spun and the client paints it blue again.
+        _cd = world.spin_cooldown(fort_id)
+        if _cd:
+            w.int_(14, _cd)
     return w.to_bytes()
 
 
@@ -2011,6 +2027,8 @@ def build_capture_probability(pokemon_id=None, cp=0) -> bytes:
         # whether it holds.
         floor = _cfg.get("catching", "min_shake_probability", cast=float)
         odds = [round(max(o, floor), 3) for o in odds]
+    balls = balls + [4]                                          # Master Ball: always 1.0
+    odds = odds + [1.0]
     return (pb.Writer()
             .packed_varints(1, balls)
             .packed_floats(2, odds)
@@ -2101,8 +2119,17 @@ def build_catch_pokemon_response(encounter_id, pokeball, hit, now_ms,
     # NOT `encounter_id ^ 0xC0FFEE` any more -- that is fixed per spawn point, so
     # catching at the same place twice reused the id and the client, which keys
     # Pokemon by id, just overwrote the earlier one.
-    uid = world.new_uid(encounter_id)
-    world.add_caught(uid, s["pokemon_id"], s["cp"])
+    uid = world.encounter_uid(encounter_id, forget=True)     # same id the encounter showed
+    if world.get_caught(uid):                                # (already owned: can't reuse)
+        uid = world.new_uid(encounter_id)
+    try:
+        import s2sphere
+        _cell = s2sphere.CellId.from_lat_lng(
+            s2sphere.LatLng.from_degrees(s["lat"], s["lng"])).parent(15).id()
+    except Exception:
+        _cell = 0
+    world.add_caught(uid, s["pokemon_id"], s["cp"], pokeball=int(pokeball),
+                     cell=int(_cell))
     world.pokedex_caught(s["pokemon_id"])
     _score_medals(s["pokemon_id"], uid)
     world.remove_spawn(encounter_id)                      # it's ours now; clear the map
@@ -2121,7 +2148,10 @@ def build_catch_pokemon_response(encounter_id, pokeball, hit, now_ms,
     return (pb.Writer()
             .uint(1, 1)                                   # CATCH_SUCCESS
             .double(2, 0.0)                               # miss_percent
-            .uint(3, uid)                                 # captured_pokemon_id
+            # captured_pokemon_id is FIXED64 (the client's parser: tag 0x19 ->
+            # ReadFixed64). Sent as a varint, the client dropped it, read the id
+            # as 0, and skipped the post-catch summary straight back to the map.
+            .fixed64(3, uid)
             .message(4, award)                            # capture_award
             .to_bytes())
 
@@ -3497,8 +3527,10 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
                       "items": [[int(i), int(c)] for i, c in awards],
                       "eggs": eggs_got})
     _cool = _cfg.get("pokestops", "cooldown_minutes", cast=float)
+    _until = now_ms + int(_cool * 60_000)
+    world.set_spin_cooldown(fort_id, _until)                   # map keeps it purple
     return (w.int_(5, _cfg.get("pokestops", "xp_per_spin", cast=int))   # experience_awarded
-             .int_(6, now_ms + int(_cool * 60_000))            # cooldown (goes purple)
+             .int_(6, _until)                                  # cooldown (goes purple)
              .to_bytes())
 
 
@@ -4569,7 +4601,7 @@ def build_special_encounter_response(encounter_id) -> bytes:
     world.bump("pokemons_encountered")
     world.pokedex_saw(s["pokemon_id"])
     return (pb.Writer().uint(1, 1)
-            .message(2, build_pokemon_data(s["pokemon_id"], encounter_id, s["cp"]))
+            .message(2, build_pokemon_data(s["pokemon_id"], wild_uid(encounter_id), s["cp"]))
             .message(3, build_capture_probability(s["pokemon_id"], s["cp"]))
             .to_bytes())
 
