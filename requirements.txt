@@ -1,0 +1,7 @@
+s2sphere
+requests
+certifi
+customtkinter
+threading
+mariadb
+pathlib
