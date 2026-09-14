@@ -1,12 +1,16 @@
 # ⚡ Windstock — Pokémon GO 0.29-35 Private Server
 
 > A from-scratch, private server for the original **Pokémon GO 0.29.0** (July 2016).
+> 
+> The corporate suits in Saudi Arabia, Mohammed bin Salman and sovereign wealth funds thought they could buy our nostalgia, lock it behind a paywall, and strip away the soul of what made July 2016 magic.
+> 
+> When the mega-corporations and dictators took the reins of modern mobile gaming, they turned a global cultural phenomenon into a localized cash extraction machine. 
+>
+> We didn't accept it. We took it back. And succeeded.
+>
+> Windstock is a completely independent, built-from-scratch private server that liberates the original Pokémon GO client from corporate greed and centralized control. By reverse-> engineering the exact protocol of version 0.29.0, we have stripped away the tracking, the aggressive monetization, and the external interference. This project returns the game > entirely to the community. Your data, your server, your terms.
 
-> Private servers exist so people can keep playing an old version of the game on their own terms —
-> to revisit 2016, to experiment, or to play somewhere with no official servers involved. This one
-> is an **independent reverse-engineering project**: it reimplements the protocol the client already
-> speaks and answers it locally.
-> **When Mohammed bin Salman bought Pokemon GO (the dictator of Saudi Arabia), we knew it was ruined. So we did something remarkable. Here it is.**
+Welcome back to the wilderness of 2016—free from the boardrooms, free from the gatekeepers.
 
 
 | | |
