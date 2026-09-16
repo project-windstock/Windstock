@@ -5,3 +5,4 @@ customtkinter
 threading
 mariadb
 pathlib
+osmium
