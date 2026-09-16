@@ -1,0 +1,120 @@
+{
+  "_readme": [
+    "==================== BIOMES ====================",
+    "Wild Pokemon favour the terrain around you, the way the 2016 game's",
+    "biomes did: Water types by rivers and coasts, Bug/Grass in the woods,",
+    "city trash downtown, Rock/Ground on hills. The server reads this file",
+    "live (edit + save, no restart).",
+    "",
+    "Each biome has two parts:",
+    "  types  which Pokemon TYPES it favours, and by how much. The number",
+    "         multiplies that species' normal spawn chance, so a rare Water",
+    "         Pokemon near water is still rarer than a common one -- the",
+    "         biome changes WHICH types dominate, not how rare they are.",
+    "  osm    the OpenStreetMap tags that mark this terrain. Checked in the",
+    "         order the biomes appear below; the FIRST matching rule wins, so",
+    "         the specific natural terrain is listed before city/grass.",
+    "         A rule is [key, value]: the value is matched as a substring",
+    "         (\"\" matches any value for that key).",
+    "",
+    "The server gets the terrain from OpenStreetMap: it asks the free",
+    "Overpass API about an area the first time someone plays there, caches",
+    "the answer in data/osm_biomes.json, and uses it for every spawn after",
+    "that. Where OSM has nothing (open countryside, no internet), a region",
+    "keeps a stable hash-chosen biome instead, so the world is never empty.",
+    "Set osm.enabled to false (or OSM_BIOMES_ONLINE=0 / spawns.osm_online",
+    "false in settings.json) to stay fully offline.",
+    "",
+    "To use extra precomputed terrain: run tools/fetch_osm_biomes.py or",
+    "tools/fetch_us_biomes.py, which write the same data/osm_biomes.json.",
+    "===================================================================="
+  ],
+  "cell_level": 12,
+  "max_distance_m": 1500,
+  "osm": {
+    "enabled": true,
+    "query_radius_m": 4000,
+    "retry_minutes": 360,
+    "min_interval_s": 8,
+    "max_points": 200000,
+    "timeout_s": 60,
+    "user_agent": "pogo-private-server/1.0 (personal use)",
+    "api": [
+      "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass-api.de/api/interpreter",
+      "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    ]
+  },
+  "biomes": {
+    "water": {
+      "types": {"water": 9, "ice": 5, "flying": 2},
+      "osm": [
+        ["natural", "water"], ["natural", "bay"], ["natural", "strait"],
+        ["natural", "spring"], ["natural", "coastline"], ["natural", "glacier"],
+        ["landuse", "reservoir"], ["landuse", "basin"],
+        ["leisure", "marina"], ["waterway", ""]
+      ]
+    },
+    "wetland": {
+      "types": {"water": 6, "poison": 5, "ground": 4, "grass": 4, "bug": 3},
+      "osm": [
+        ["natural", "wetland"], ["natural", "mud"],
+        ["landuse", "salt_pond"], ["natural", "marsh"]
+      ]
+    },
+    "forest": {
+      "types": {"bug": 8, "grass": 5, "poison": 4, "fairy": 2},
+      "osm": [
+        ["natural", "wood"], ["landuse", "forest"], ["natural", "scrub"],
+        ["natural", "heath"], ["natural", "tree_row"],
+        ["leisure", "nature_reserve"]
+      ]
+    },
+    "mountain": {
+      "types": {"rock": 8, "ground": 6, "fighting": 4, "fire": 3},
+      "osm": [
+        ["natural", "peak"], ["natural", "cliff"], ["natural", "ridge"],
+        ["natural", "rock"], ["natural", "bare_rock"], ["natural", "scree"],
+        ["natural", "saddle"], ["natural", "volcano"], ["natural", "stone"],
+        ["landuse", "quarry"]
+      ]
+    },
+    "desert": {
+      "types": {"ground": 8, "rock": 6, "fire": 5},
+      "osm": [
+        ["natural", "sand"], ["natural", "dune"], ["natural", "beach"],
+        ["natural", "shingle"], ["natural", "desert"]
+      ]
+    },
+    "city": {
+      "types": {"normal": 5, "rock": 5, "electric": 6, "poison": 5,
+                "steel": 4, "ghost": 4},
+      "osm": [
+        ["landuse", "residential"], ["landuse", "commercial"],
+        ["landuse", "industrial"], ["landuse", "retail"],
+        ["landuse", "railway"], ["landuse", "construction"],
+        ["landuse", "garages"], ["man_made", "works"], ["man_made", "tower"]
+      ]
+    },
+    "grassland": {
+      "types": {"grass": 7, "normal": 4, "bug": 3, "fairy": 3},
+      "osm": [
+        ["leisure", "park"], ["leisure", "garden"], ["leisure", "golf_course"],
+        ["leisure", "pitch"], ["leisure", "recreation_ground"],
+        ["leisure", "common"], ["leisure", "village_green"],
+        ["landuse", "grass"], ["landuse", "meadow"], ["landuse", "village_green"],
+        ["landuse", "cemetery"], ["landuse", "farmland"], ["landuse", "farmyard"],
+        ["landuse", "orchard"], ["landuse", "allotments"],
+        ["landuse", "greenfield"], ["natural", "grassland"],
+        ["natural", "fell"], ["natural", "meadow"]
+      ]
+    },
+    "suburban": {
+      "types": {"normal": 6, "fairy": 4, "electric": 3, "psychic": 3},
+      "osm": [
+        ["place", "suburb"], ["place", "neighbourhood"], ["place", "village"],
+        ["place", "hamlet"], ["place", "town"], ["place", "city_block"]
+      ]
+    }
+  }
+}

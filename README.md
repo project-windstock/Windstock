@@ -111,19 +111,28 @@ Step-by-step device guides live in `src/server/DEVICE_SETUP.md`, `src/server/RUN
 
 | Component | File | Role |
 |---|---|---|
-| 🌐 DNS redirector | `src/server/dns_redirect.py` | Points the Niantic/PTC hosts at this PC; forwards everything else |
-| 🔐 HTTPS server | `src/server/server.py` | One TLS listener, routes by `Host` header |
-| 🔑 Fake PTC SSO | `src/server/sso.py` | Accepts any credentials, puts the username in the token |
-| 🌉 0.35 SSO bridge | `src/server/sso_bridge.py` | Plain-HTTP login door for the 0.35 client |
-| 📨 RPC handler | `src/server/rpc.py` | The game protocol: boot handshake, map, catching, forts, gyms, shop |
-| 🧱 Response builders | `src/server/protocol.py` | Every message sent to the client (the heart of the project) |
-| 🧬 Protobuf codec | `src/server/pb.py` | Hand-written protobuf reader/writer (no `protoc`) |
-| 💾 World state | `src/server/world.py` | Per-account inventory, Pokémon and XP, plus shared gyms, saved to disk |
-| 🎛️ Game data | `src/server/gamedata.py`, `settings.py` | Stats, moves, types; hot-reloaded tuning in `settings.json` |
-| 🛍️ Shop / Help / Site | `src/server/shop.py`, `helpcenter.py`, `website.py` | In-game store, support pages, status site |
-| 🧭 World Manager | `src/server/webui.py`, `admin.py` | Local web UI for stops, gyms, events and POIs |
-| 🚀 Launcher | `src/server/__main__.py` | Runs the DNS redirector and game server (plus bridges) in one process |
-| 🪟 Server window | `src/server/server_gui.py`, `pogo_manager.py` | Desktop status/control windows |
+The server is a proper Python package under `src/server/windstock/`, split by concern
+(`config/`, `game/`, `geo/`, `net/`, `web/`, `cli/`, `ui/`, `tools/`).
+
+| Component | File | Role |
+|---|---|---|
+| 🌐 DNS redirector | `src/server/windstock/net/dns_redirect.py` | Points the Niantic/PTC hosts at this PC; forwards everything else |
+| 🔐 HTTPS server | `src/server/windstock/net/server.py` | One TLS listener, routes by `Host` header |
+| 🔑 Fake PTC SSO | `src/server/windstock/net/sso.py` | Accepts any credentials, puts the username in the token |
+| 🌉 0.35 SSO bridge | `src/server/windstock/net/sso_bridge.py` | Plain-HTTP login door for the 0.35 client |
+| 📨 RPC handler | `src/server/windstock/game/rpc.py` | The game protocol: boot handshake, map, catching, forts, gyms, shop |
+| 🧱 Response builders | `src/server/windstock/game/protocol.py` | Every message sent to the client (the heart of the project) |
+| 🧬 Protobuf codec | `src/server/windstock/game/pb.py` | Hand-written protobuf reader/writer (no `protoc`) |
+| 💾 World state | `src/server/windstock/game/world.py` | Per-account inventory, Pokémon and XP, plus shared gyms, saved to disk |
+| 🎲 Wild-spawn table | `src/server/cpdata.json`, `src/server/windstock/game/cpdata.py` | Per-species rarity + common wild CP — the **default** spawn table |
+| 🗺️ Biomes | `src/server/biomes.json`, `src/server/windstock/geo/biomes.py` | Which types each terrain favours + its OpenStreetMap tags; real terrain via the OSM Overpass API, cached in `data/osm_biomes.json` |
+| 🎛️ Game data | `src/server/windstock/game/gamedata.py`, `src/server/windstock/config/settings.py` | Stats, moves, types; hot-reloaded tuning in `settings.json` |
+| 🛍️ Shop / Help / Site | `src/server/windstock/game/shop.py`, `src/server/windstock/web/helpcenter.py`, `src/server/windstock/web/website.py` | In-game store, support pages, status site |
+| 🧭 World Manager | `src/server/windstock/web/webui.py`, `src/server/windstock/web/admin.py` | Local web UI for stops, gyms, events and POIs |
+| 🗂️ Paths / config | `src/server/windstock/config/paths.py` | Single source of truth for data + bundled-resource locations |
+| 🚀 Launcher | `src/server/run.py`, `src/server/windstock/__main__.py` | Runs the DNS redirector and game server (plus bridges) in one process |
+| ⌨️ Slash console | `src/server/windstock/cli/console.py` | The World Manager, typed (`/help`, `/default`, ...) |
+| 🪟 Server window | `src/server/windstock/ui/pogo_manager.py` | Desktop status/control window |
 | 🧪 Game master converter | `src/tools/convert_gm.py` | Rebuilds the 2016 GAME_MASTER into 0.29 item templates |
 | 🔎 Metadata reader | `src/tools/metadata_fields.py` | Reads exact protobuf field numbers straight out of the client |
 | 🩹 APK patcher | `src/patcher/patcher.py` | GUI that strips certificate pinning from an APK |
@@ -151,24 +160,34 @@ change that. `--check`, `--list` and `--dry-run` are available too.
 
 ```bash
 cd src/server
-py gen_certs.py
+py windstock/tools/gen_certs.py       # or: py -m windstock.tools.gen_certs
 ```
 
 **2 · Start the server:**
 
 ```bash
-py __main__.py
+py run.py
 ```
 
-`__main__.py` detects this PC's LAN IP and starts the DNS redirector and the game server. Pass an
+`run.py` detects this PC's LAN IP and starts the DNS redirector and the game server. Pass an
 IP to use a specific one, such as a Tailscale address:
 
 ```bash
-py __main__.py 100.x.y.z
+py run.py 100.x.y.z
 ```
 
 You can also run the directory directly — `py src/server` — which executes its `__main__.py`.
 The World Manager opens on `http://127.0.0.1:8080`.
+
+**Wild spawns default to `cpdata.json` + the biomes.** Species are drawn by each Pokemon's
+2016 `spawn_percent_chance`, and 60% of spawns land within +/-30 CP of that species' most common
+wild CP (a common CP of 600 spawns between 570 and 630). On top of that, the terrain you are
+standing in decides which of those species dominate: `biomes.json` lists the types each biome
+favours (Water by rivers and coasts, Bug/Grass in the woods, Rock on the hills and downtown on
+the concrete) and its OpenStreetMap tags, and the server fetches the real terrain from the free
+OSM Overpass API the first time you play somewhere, caching it in `data/osm_biomes.json`. Type
+`/default` in the server console to (re)select that, or `/default off` to fall back to the
+classic biome/rarity spawner.
 
 **3 · Build a standalone exe (optional):**
 
@@ -235,7 +254,8 @@ Reverse engineering the client took a long time, and thanks to `chucny` and `bra
 ## 🗂️ Repository layout
 
 ```
-src/server/    the server (Python) + docs + deploy guides
+src/server/            launcher (run.py) + data, assets, certs, docs
+src/server/windstock/  the server package (config, game, geo, net, web, cli, ui, tools)
 src/tools/     game-master conversion + reverse-engineering scripts
 src/patcher/   APK patcher GUI (certificate-pinning removal)
 src/scripts/   helper scripts (dependency installer)

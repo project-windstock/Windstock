@@ -9,15 +9,21 @@ the map, with no Niantic/Google account.
 
 ## What's here
 
+The server is a Python package under `windstock/`; the entry point is `run.py` at this
+folder's root.
+
 | File | Role |
 |------|------|
-| `pb.py` | tiny protobuf codec + generic decoder/logger (no protoc needed) |
-| `protocol.py` | field-number map + response builders (PlayerData, envelope, auth ticket) |
-| `sso.py` | fake PTC SSO (`sso.pokemon.com`) — accepts any username/password |
-| `rpc.py` | game RPC (`pgorelease.nianticlabs.com/plfe/rpc`) — answers GET_PLAYER |
-| `server.py` | one HTTPS listener, routes by Host header |
-| `gen_certs.py` | makes `certs/ca.crt` (install on device) + server cert |
-| `test_login.py` | end-to-end login test, no device needed |
+| `windstock/game/pb.py` | tiny protobuf codec + generic decoder/logger (no protoc needed) |
+| `windstock/game/protocol.py` | field-number map + response builders (PlayerData, envelope, auth ticket) |
+| `windstock/net/sso.py` | fake PTC SSO (`sso.pokemon.com`) — accepts any username/password |
+| `windstock/game/rpc.py` | game RPC (`pgorelease.nianticlabs.com/plfe/rpc`) — answers GET_PLAYER |
+| `windstock/net/server.py` | one HTTPS listener, routes by Host header |
+| `windstock/tools/gen_certs.py` | makes `certs/ca.crt` (install on device) + server cert |
+| `windstock/tools/test_login.py` | end-to-end login test, no device needed |
+| `cpdata.json` | the default wild-spawn table (rarity + most common wild CP) |
+| `biomes.json` | the biomes: which Pokemon types each terrain favours, and its OpenStreetMap tags |
+| `windstock/geo/biomes.py` | reads `biomes.json`, asks the OSM Overpass API for the real terrain, caches it in `data/osm_biomes.json` |
 
 The username you type on the PTC login screen becomes your in-game trainer
 name. Brand-new accounts run the real 2016 onboarding (legal screen, avatar
@@ -37,11 +43,15 @@ existing saves skip straight to the map.
 ## Run it
 
 ```sh
-py gen_certs.py        # once — creates certs/
-py server.py           # listens on 0.0.0.0:443  (run as admin/root for :443)
-# local smoke test, no device:
-PORT=8443 py server.py            # terminal A
-USERNAME=YourName PORT=8443 py test_login.py   # terminal B
+py run.py              # launcher: DNS redirector + game server on :443
+py run.py 100.x.y.z    # ...or point the phone at a specific IP
+
+# one-off certificate generation (creates certs/):
+py windstock/tools/gen_certs.py
+
+# local smoke test, no device (start the server on a high port first):
+PORT=8443 py -m windstock.net.server
+USERNAME=YourName PORT=8443 py windstock/tools/test_login.py
 ```
 
 ## Point the real client at it
@@ -75,7 +85,7 @@ On Android ≤6 the app will trust it automatically.
 **4. Run the server on this PC** on port 443 (must be 443 — that's where the
 client connects):
 ```sh
-py server.py
+py run.py
 ```
 
 **5. Launch Pokémon GO**, choose **Pokémon Trainer Club**, type any username +

@@ -1,0 +1,2116 @@
+[
+  {
+    "pokedex_id": 1,
+    "name": "Bulbasaur",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.69,
+    "max_cp_2016": 981,
+    "most_common_wild_cps": [
+      245,
+      490,
+      686
+    ]
+  },
+  {
+    "pokedex_id": 2,
+    "name": "Ivysaur",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.042,
+    "max_cp_2016": 1632,
+    "most_common_wild_cps": [
+      408,
+      816,
+      1142
+    ]
+  },
+  {
+    "pokedex_id": 3,
+    "name": "Venusaur",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.017,
+    "max_cp_2016": 2580,
+    "most_common_wild_cps": [
+      645,
+      1290,
+      1805
+    ]
+  },
+  {
+    "pokedex_id": 4,
+    "name": "Charmander",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.253,
+    "max_cp_2016": 955,
+    "most_common_wild_cps": [
+      238,
+      477,
+      668
+    ]
+  },
+  {
+    "pokedex_id": 5,
+    "name": "Charmeleon",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.012,
+    "max_cp_2016": 1557,
+    "most_common_wild_cps": [
+      389,
+      778,
+      1089
+    ]
+  },
+  {
+    "pokedex_id": 6,
+    "name": "Charizard",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0031,
+    "max_cp_2016": 2602,
+    "most_common_wild_cps": [
+      650,
+      1301,
+      1821
+    ]
+  },
+  {
+    "pokedex_id": 7,
+    "name": "Squirtle",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.52,
+    "max_cp_2016": 1008,
+    "most_common_wild_cps": [
+      252,
+      504,
+      705
+    ]
+  },
+  {
+    "pokedex_id": 8,
+    "name": "Wartortle",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.034,
+    "max_cp_2016": 1582,
+    "most_common_wild_cps": [
+      395,
+      791,
+      1107
+    ]
+  },
+  {
+    "pokedex_id": 9,
+    "name": "Blastoise",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0067,
+    "max_cp_2016": 2542,
+    "most_common_wild_cps": [
+      635,
+      1271,
+      1779
+    ]
+  },
+  {
+    "pokedex_id": 10,
+    "name": "Caterpie",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 4.21,
+    "max_cp_2016": 443,
+    "most_common_wild_cps": [
+      110,
+      221,
+      310
+    ]
+  },
+  {
+    "pokedex_id": 11,
+    "name": "Metapod",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.187,
+    "max_cp_2016": 477,
+    "most_common_wild_cps": [
+      119,
+      238,
+      333
+    ]
+  },
+  {
+    "pokedex_id": 12,
+    "name": "Butterfree",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.022,
+    "max_cp_2016": 1454,
+    "most_common_wild_cps": [
+      363,
+      727,
+      1017
+    ]
+  },
+  {
+    "pokedex_id": 13,
+    "name": "Weedle",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 7.12,
+    "max_cp_2016": 449,
+    "most_common_wild_cps": [
+      112,
+      224,
+      314
+    ]
+  },
+  {
+    "pokedex_id": 14,
+    "name": "Kakuna",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.44,
+    "max_cp_2016": 485,
+    "most_common_wild_cps": [
+      121,
+      242,
+      339
+    ]
+  },
+  {
+    "pokedex_id": 15,
+    "name": "Beedrill",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.051,
+    "max_cp_2016": 1437,
+    "most_common_wild_cps": [
+      359,
+      718,
+      1005
+    ]
+  },
+  {
+    "pokedex_id": 16,
+    "name": "Pidgey",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 15.98,
+    "max_cp_2016": 679,
+    "most_common_wild_cps": [
+      169,
+      339,
+      475
+    ]
+  },
+  {
+    "pokedex_id": 17,
+    "name": "Pidgeotto",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.02,
+    "max_cp_2016": 1223,
+    "most_common_wild_cps": [
+      305,
+      611,
+      856
+    ]
+  },
+  {
+    "pokedex_id": 18,
+    "name": "Pidgeot",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.13,
+    "max_cp_2016": 2091,
+    "most_common_wild_cps": [
+      522,
+      1045,
+      1463
+    ]
+  },
+  {
+    "pokedex_id": 19,
+    "name": "Rattata",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 13.05,
+    "max_cp_2016": 581,
+    "most_common_wild_cps": [
+      145,
+      290,
+      406
+    ]
+  },
+  {
+    "pokedex_id": 20,
+    "name": "Raticate",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.41,
+    "max_cp_2016": 1444,
+    "most_common_wild_cps": [
+      361,
+      722,
+      1010
+    ]
+  },
+  {
+    "pokedex_id": 21,
+    "name": "Spearow",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 4.73,
+    "max_cp_2016": 686,
+    "most_common_wild_cps": [
+      171,
+      343,
+      480
+    ]
+  },
+  {
+    "pokedex_id": 22,
+    "name": "Fearow",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.15,
+    "max_cp_2016": 1746,
+    "most_common_wild_cps": [
+      436,
+      873,
+      1222
+    ]
+  },
+  {
+    "pokedex_id": 23,
+    "name": "Ekans",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.27,
+    "max_cp_2016": 824,
+    "most_common_wild_cps": [
+      206,
+      412,
+      576
+    ]
+  },
+  {
+    "pokedex_id": 24,
+    "name": "Arbok",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.089,
+    "max_cp_2016": 1767,
+    "most_common_wild_cps": [
+      441,
+      883,
+      1236
+    ]
+  },
+  {
+    "pokedex_id": 25,
+    "name": "Pikachu",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.21,
+    "max_cp_2016": 887,
+    "most_common_wild_cps": [
+      221,
+      443,
+      620
+    ]
+  },
+  {
+    "pokedex_id": 26,
+    "name": "Raichu",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0076,
+    "max_cp_2016": 2028,
+    "most_common_wild_cps": [
+      507,
+      1014,
+      1419
+    ]
+  },
+  {
+    "pokedex_id": 27,
+    "name": "Sandshrew",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.11,
+    "max_cp_2016": 798,
+    "most_common_wild_cps": [
+      199,
+      399,
+      558
+    ]
+  },
+  {
+    "pokedex_id": 28,
+    "name": "Sandslash",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.037,
+    "max_cp_2016": 1810,
+    "most_common_wild_cps": [
+      452,
+      905,
+      1267
+    ]
+  },
+  {
+    "pokedex_id": 29,
+    "name": "Nidoran\u2640",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.38,
+    "max_cp_2016": 876,
+    "most_common_wild_cps": [
+      219,
+      438,
+      613
+    ]
+  },
+  {
+    "pokedex_id": 30,
+    "name": "Nidorina",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.088,
+    "max_cp_2016": 1404,
+    "most_common_wild_cps": [
+      351,
+      702,
+      982
+    ]
+  },
+  {
+    "pokedex_id": 31,
+    "name": "Nidoqueen",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.012,
+    "max_cp_2016": 2485,
+    "most_common_wild_cps": [
+      621,
+      1242,
+      1739
+    ]
+  },
+  {
+    "pokedex_id": 32,
+    "name": "Nidoran\u2642",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.31,
+    "max_cp_2016": 843,
+    "most_common_wild_cps": [
+      210,
+      421,
+      590
+    ]
+  },
+  {
+    "pokedex_id": 33,
+    "name": "Nidorino",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.083,
+    "max_cp_2016": 1372,
+    "most_common_wild_cps": [
+      343,
+      686,
+      960
+    ]
+  },
+  {
+    "pokedex_id": 34,
+    "name": "Nidoking",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.017,
+    "max_cp_2016": 2567,
+    "most_common_wild_cps": [
+      641,
+      1283,
+      1796
+    ]
+  },
+  {
+    "pokedex_id": 35,
+    "name": "Clefairy",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.92,
+    "max_cp_2016": 1200,
+    "most_common_wild_cps": [
+      300,
+      600,
+      840
+    ]
+  },
+  {
+    "pokedex_id": 36,
+    "name": "Clefable",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.012,
+    "max_cp_2016": 2397,
+    "most_common_wild_cps": [
+      599,
+      1198,
+      1677
+    ]
+  },
+  {
+    "pokedex_id": 37,
+    "name": "Vulpix",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.22,
+    "max_cp_2016": 831,
+    "most_common_wild_cps": [
+      207,
+      415,
+      581
+    ]
+  },
+  {
+    "pokedex_id": 38,
+    "name": "Ninetales",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0077,
+    "max_cp_2016": 2188,
+    "most_common_wild_cps": [
+      547,
+      1094,
+      1531
+    ]
+  },
+  {
+    "pokedex_id": 39,
+    "name": "Jigglypuff",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.39,
+    "max_cp_2016": 917,
+    "most_common_wild_cps": [
+      229,
+      458,
+      641
+    ]
+  },
+  {
+    "pokedex_id": 40,
+    "name": "Wigglytuff",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.018,
+    "max_cp_2016": 2177,
+    "most_common_wild_cps": [
+      544,
+      1088,
+      1523
+    ]
+  },
+  {
+    "pokedex_id": 41,
+    "name": "Zubat",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 6.52,
+    "max_cp_2016": 642,
+    "most_common_wild_cps": [
+      160,
+      321,
+      449
+    ]
+  },
+  {
+    "pokedex_id": 42,
+    "name": "Golbat",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.42,
+    "max_cp_2016": 1921,
+    "most_common_wild_cps": [
+      480,
+      960,
+      1344
+    ]
+  },
+  {
+    "pokedex_id": 43,
+    "name": "Oddish",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.02,
+    "max_cp_2016": 1148,
+    "most_common_wild_cps": [
+      287,
+      574,
+      803
+    ]
+  },
+  {
+    "pokedex_id": 44,
+    "name": "Gloom",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.064,
+    "max_cp_2016": 1684,
+    "most_common_wild_cps": [
+      421,
+      842,
+      1178
+    ]
+  },
+  {
+    "pokedex_id": 45,
+    "name": "Vileplume",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0097,
+    "max_cp_2016": 2492,
+    "most_common_wild_cps": [
+      623,
+      1246,
+      1744
+    ]
+  },
+  {
+    "pokedex_id": 46,
+    "name": "Paras",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.36,
+    "max_cp_2016": 910,
+    "most_common_wild_cps": [
+      227,
+      455,
+      637
+    ]
+  },
+  {
+    "pokedex_id": 47,
+    "name": "Parasect",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.086,
+    "max_cp_2016": 1747,
+    "most_common_wild_cps": [
+      436,
+      873,
+      1222
+    ]
+  },
+  {
+    "pokedex_id": 48,
+    "name": "Venonat",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.28,
+    "max_cp_2016": 1029,
+    "most_common_wild_cps": [
+      257,
+      514,
+      720
+    ]
+  },
+  {
+    "pokedex_id": 49,
+    "name": "Venomoth",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.11,
+    "max_cp_2016": 1890,
+    "most_common_wild_cps": [
+      472,
+      945,
+      1323
+    ]
+  },
+  {
+    "pokedex_id": 50,
+    "name": "Diglett",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.4,
+    "max_cp_2016": 465,
+    "most_common_wild_cps": [
+      116,
+      232,
+      325
+    ]
+  },
+  {
+    "pokedex_id": 51,
+    "name": "Dugtrio",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.014,
+    "max_cp_2016": 1168,
+    "most_common_wild_cps": [
+      292,
+      584,
+      817
+    ]
+  },
+  {
+    "pokedex_id": 52,
+    "name": "Meowth",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.86,
+    "max_cp_2016": 756,
+    "most_common_wild_cps": [
+      189,
+      378,
+      529
+    ]
+  },
+  {
+    "pokedex_id": 53,
+    "name": "Persian",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.022,
+    "max_cp_2016": 1631,
+    "most_common_wild_cps": [
+      407,
+      815,
+      1141
+    ]
+  },
+  {
+    "pokedex_id": 54,
+    "name": "Psyduck",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.89,
+    "max_cp_2016": 1109,
+    "most_common_wild_cps": [
+      277,
+      554,
+      776
+    ]
+  },
+  {
+    "pokedex_id": 55,
+    "name": "Golduck",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.087,
+    "max_cp_2016": 2386,
+    "most_common_wild_cps": [
+      596,
+      1193,
+      1670
+    ]
+  },
+  {
+    "pokedex_id": 56,
+    "name": "Mankey",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.79,
+    "max_cp_2016": 1002,
+    "most_common_wild_cps": [
+      250,
+      501,
+      701
+    ]
+  },
+  {
+    "pokedex_id": 57,
+    "name": "Primeape",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.031,
+    "max_cp_2016": 2105,
+    "most_common_wild_cps": [
+      526,
+      1052,
+      1473
+    ]
+  },
+  {
+    "pokedex_id": 58,
+    "name": "Growlithe",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.92,
+    "max_cp_2016": 1235,
+    "most_common_wild_cps": [
+      308,
+      617,
+      864
+    ]
+  },
+  {
+    "pokedex_id": 59,
+    "name": "Arcanine",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.017,
+    "max_cp_2016": 2983,
+    "most_common_wild_cps": [
+      745,
+      1491,
+      2088
+    ]
+  },
+  {
+    "pokedex_id": 60,
+    "name": "Poliwag",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.19,
+    "max_cp_2016": 795,
+    "most_common_wild_cps": [
+      198,
+      397,
+      556
+    ]
+  },
+  {
+    "pokedex_id": 61,
+    "name": "Poliwhirl",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.13,
+    "max_cp_2016": 1340,
+    "most_common_wild_cps": [
+      335,
+      670,
+      937
+    ]
+  },
+  {
+    "pokedex_id": 62,
+    "name": "Poliwrath",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.011,
+    "max_cp_2016": 2508,
+    "most_common_wild_cps": [
+      627,
+      1254,
+      1755
+    ]
+  },
+  {
+    "pokedex_id": 63,
+    "name": "Abra",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.42,
+    "max_cp_2016": 600,
+    "most_common_wild_cps": [
+      150,
+      300,
+      420
+    ]
+  },
+  {
+    "pokedex_id": 64,
+    "name": "Kadabra",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.027,
+    "max_cp_2016": 1131,
+    "most_common_wild_cps": [
+      282,
+      565,
+      791
+    ]
+  },
+  {
+    "pokedex_id": 65,
+    "name": "Alakazam",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0073,
+    "max_cp_2016": 1817,
+    "most_common_wild_cps": [
+      454,
+      908,
+      1271
+    ]
+  },
+  {
+    "pokedex_id": 66,
+    "name": "Machop",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.49,
+    "max_cp_2016": 1089,
+    "most_common_wild_cps": [
+      272,
+      544,
+      762
+    ]
+  },
+  {
+    "pokedex_id": 67,
+    "name": "Machoke",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.034,
+    "max_cp_2016": 1760,
+    "most_common_wild_cps": [
+      440,
+      880,
+      1232
+    ]
+  },
+  {
+    "pokedex_id": 68,
+    "name": "Machamp",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0068,
+    "max_cp_2016": 2594,
+    "most_common_wild_cps": [
+      648,
+      1297,
+      1815
+    ]
+  },
+  {
+    "pokedex_id": 69,
+    "name": "Bellsprout",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.15,
+    "max_cp_2016": 1117,
+    "most_common_wild_cps": [
+      279,
+      558,
+      781
+    ]
+  },
+  {
+    "pokedex_id": 70,
+    "name": "Weepinbell",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.072,
+    "max_cp_2016": 1680,
+    "most_common_wild_cps": [
+      420,
+      840,
+      1176
+    ]
+  },
+  {
+    "pokedex_id": 71,
+    "name": "Victreebel",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0059,
+    "max_cp_2016": 2530,
+    "most_common_wild_cps": [
+      632,
+      1265,
+      1771
+    ]
+  },
+  {
+    "pokedex_id": 72,
+    "name": "Tentacool",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.23,
+    "max_cp_2016": 956,
+    "most_common_wild_cps": [
+      239,
+      478,
+      669
+    ]
+  },
+  {
+    "pokedex_id": 73,
+    "name": "Tentacruel",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.082,
+    "max_cp_2016": 2220,
+    "most_common_wild_cps": [
+      555,
+      1110,
+      1554
+    ]
+  },
+  {
+    "pokedex_id": 74,
+    "name": "Geodude",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.19,
+    "max_cp_2016": 849,
+    "most_common_wild_cps": [
+      212,
+      424,
+      594
+    ]
+  },
+  {
+    "pokedex_id": 75,
+    "name": "Graveler",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.071,
+    "max_cp_2016": 1434,
+    "most_common_wild_cps": [
+      358,
+      717,
+      1003
+    ]
+  },
+  {
+    "pokedex_id": 76,
+    "name": "Golem",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0047,
+    "max_cp_2016": 2303,
+    "most_common_wild_cps": [
+      575,
+      1151,
+      1612
+    ]
+  },
+  {
+    "pokedex_id": 77,
+    "name": "Ponyta",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.51,
+    "max_cp_2016": 1516,
+    "most_common_wild_cps": [
+      379,
+      758,
+      1061
+    ]
+  },
+  {
+    "pokedex_id": 78,
+    "name": "Rapidash",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.011,
+    "max_cp_2016": 2199,
+    "most_common_wild_cps": [
+      549,
+      1099,
+      1539
+    ]
+  },
+  {
+    "pokedex_id": 79,
+    "name": "Slowpoke",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.61,
+    "max_cp_2016": 1218,
+    "most_common_wild_cps": [
+      304,
+      609,
+      852
+    ]
+  },
+  {
+    "pokedex_id": 80,
+    "name": "Slowbro",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.036,
+    "max_cp_2016": 2597,
+    "most_common_wild_cps": [
+      649,
+      1298,
+      1817
+    ]
+  },
+  {
+    "pokedex_id": 81,
+    "name": "Magnemite",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.71,
+    "max_cp_2016": 890,
+    "most_common_wild_cps": [
+      222,
+      445,
+      623
+    ]
+  },
+  {
+    "pokedex_id": 82,
+    "name": "Magneton",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.023,
+    "max_cp_2016": 1879,
+    "most_common_wild_cps": [
+      469,
+      939,
+      1315
+    ]
+  },
+  {
+    "pokedex_id": 83,
+    "name": "Farfetch'd",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0212,
+    "max_cp_2016": 1263,
+    "most_common_wild_cps": [
+      315,
+      631,
+      884
+    ]
+  },
+  {
+    "pokedex_id": 84,
+    "name": "Doduo",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.52,
+    "max_cp_2016": 961,
+    "most_common_wild_cps": [
+      240,
+      480,
+      672
+    ]
+  },
+  {
+    "pokedex_id": 85,
+    "name": "Dodrio",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.022,
+    "max_cp_2016": 1836,
+    "most_common_wild_cps": [
+      459,
+      918,
+      1285
+    ]
+  },
+  {
+    "pokedex_id": 86,
+    "name": "Seel",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.28,
+    "max_cp_2016": 1107,
+    "most_common_wild_cps": [
+      276,
+      553,
+      774
+    ]
+  },
+  {
+    "pokedex_id": 87,
+    "name": "Dewgong",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.013,
+    "max_cp_2016": 2145,
+    "most_common_wild_cps": [
+      536,
+      1072,
+      1501
+    ]
+  },
+  {
+    "pokedex_id": 88,
+    "name": "Grimer",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.052,
+    "max_cp_2016": 1284,
+    "most_common_wild_cps": [
+      321,
+      642,
+      898
+    ]
+  },
+  {
+    "pokedex_id": 89,
+    "name": "Muk",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0031,
+    "max_cp_2016": 2602,
+    "most_common_wild_cps": [
+      650,
+      1301,
+      1821
+    ]
+  },
+  {
+    "pokedex_id": 90,
+    "name": "Shellder",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.52,
+    "max_cp_2016": 822,
+    "most_common_wild_cps": [
+      205,
+      411,
+      575
+    ]
+  },
+  {
+    "pokedex_id": 91,
+    "name": "Cloyster",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.015,
+    "max_cp_2016": 2052,
+    "most_common_wild_cps": [
+      513,
+      1026,
+      1436
+    ]
+  },
+  {
+    "pokedex_id": 92,
+    "name": "Gastly",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.79,
+    "max_cp_2016": 804,
+    "most_common_wild_cps": [
+      201,
+      402,
+      562
+    ]
+  },
+  {
+    "pokedex_id": 93,
+    "name": "Haunter",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.041,
+    "max_cp_2016": 1380,
+    "most_common_wild_cps": [
+      345,
+      690,
+      965
+    ]
+  },
+  {
+    "pokedex_id": 94,
+    "name": "Gengar",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0067,
+    "max_cp_2016": 2078,
+    "most_common_wild_cps": [
+      519,
+      1039,
+      1454
+    ]
+  },
+  {
+    "pokedex_id": 95,
+    "name": "Onix",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.1,
+    "max_cp_2016": 857,
+    "most_common_wild_cps": [
+      214,
+      428,
+      599
+    ]
+  },
+  {
+    "pokedex_id": 96,
+    "name": "Drowzee",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 3.21,
+    "max_cp_2016": 1075,
+    "most_common_wild_cps": [
+      268,
+      537,
+      752
+    ]
+  },
+  {
+    "pokedex_id": 97,
+    "name": "Hypno",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.1,
+    "max_cp_2016": 2184,
+    "most_common_wild_cps": [
+      546,
+      1092,
+      1528
+    ]
+  },
+  {
+    "pokedex_id": 98,
+    "name": "Krabby",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.12,
+    "max_cp_2016": 792,
+    "most_common_wild_cps": [
+      198,
+      396,
+      554
+    ]
+  },
+  {
+    "pokedex_id": 99,
+    "name": "Kingler",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.062,
+    "max_cp_2016": 1823,
+    "most_common_wild_cps": [
+      455,
+      911,
+      1276
+    ]
+  },
+  {
+    "pokedex_id": 100,
+    "name": "Voltorb",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.65,
+    "max_cp_2016": 839,
+    "most_common_wild_cps": [
+      209,
+      419,
+      587
+    ]
+  },
+  {
+    "pokedex_id": 101,
+    "name": "Electrode",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.02,
+    "max_cp_2016": 1646,
+    "most_common_wild_cps": [
+      411,
+      823,
+      1152
+    ]
+  },
+  {
+    "pokedex_id": 102,
+    "name": "Exeggcute",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.78,
+    "max_cp_2016": 1102,
+    "most_common_wild_cps": [
+      275,
+      551,
+      771
+    ]
+  },
+  {
+    "pokedex_id": 103,
+    "name": "Exeggutor",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.014,
+    "max_cp_2016": 2955,
+    "most_common_wild_cps": [
+      738,
+      1477,
+      2068
+    ]
+  },
+  {
+    "pokedex_id": 104,
+    "name": "Cubone",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.61,
+    "max_cp_2016": 1006,
+    "most_common_wild_cps": [
+      251,
+      503,
+      704
+    ]
+  },
+  {
+    "pokedex_id": 105,
+    "name": "Marowak",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.02,
+    "max_cp_2016": 1656,
+    "most_common_wild_cps": [
+      414,
+      828,
+      1159
+    ]
+  },
+  {
+    "pokedex_id": 106,
+    "name": "Hitmonlee",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.02,
+    "max_cp_2016": 1492,
+    "most_common_wild_cps": [
+      373,
+      746,
+      1044
+    ]
+  },
+  {
+    "pokedex_id": 107,
+    "name": "Hitmonchan",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.022,
+    "max_cp_2016": 1516,
+    "most_common_wild_cps": [
+      379,
+      758,
+      1061
+    ]
+  },
+  {
+    "pokedex_id": 108,
+    "name": "Lickitung",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.042,
+    "max_cp_2016": 1626,
+    "most_common_wild_cps": [
+      406,
+      813,
+      1138
+    ]
+  },
+  {
+    "pokedex_id": 109,
+    "name": "Koffing",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.74,
+    "max_cp_2016": 1151,
+    "most_common_wild_cps": [
+      287,
+      575,
+      805
+    ]
+  },
+  {
+    "pokedex_id": 110,
+    "name": "Weezing",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.016,
+    "max_cp_2016": 2250,
+    "most_common_wild_cps": [
+      562,
+      1125,
+      1575
+    ]
+  },
+  {
+    "pokedex_id": 111,
+    "name": "Rhyhorn",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.63,
+    "max_cp_2016": 1182,
+    "most_common_wild_cps": [
+      295,
+      591,
+      827
+    ]
+  },
+  {
+    "pokedex_id": 112,
+    "name": "Rhydon",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.022,
+    "max_cp_2016": 2243,
+    "most_common_wild_cps": [
+      560,
+      1121,
+      1570
+    ]
+  },
+  {
+    "pokedex_id": 113,
+    "name": "Chansey",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.013,
+    "max_cp_2016": 675,
+    "most_common_wild_cps": [
+      168,
+      337,
+      472
+    ]
+  },
+  {
+    "pokedex_id": 114,
+    "name": "Tangela",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.228,
+    "max_cp_2016": 1739,
+    "most_common_wild_cps": [
+      434,
+      869,
+      1217
+    ]
+  },
+  {
+    "pokedex_id": 115,
+    "name": "Kangaskhan",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.018,
+    "max_cp_2016": 2043,
+    "most_common_wild_cps": [
+      510,
+      1021,
+      1430
+    ]
+  },
+  {
+    "pokedex_id": 116,
+    "name": "Horsea",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.13,
+    "max_cp_2016": 764,
+    "most_common_wild_cps": [
+      191,
+      382,
+      534
+    ]
+  },
+  {
+    "pokedex_id": 117,
+    "name": "Seadra",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.034,
+    "max_cp_2016": 1979,
+    "most_common_wild_cps": [
+      494,
+      989,
+      1385
+    ]
+  },
+  {
+    "pokedex_id": 118,
+    "name": "Goldeen",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.18,
+    "max_cp_2016": 965,
+    "most_common_wild_cps": [
+      241,
+      482,
+      675
+    ]
+  },
+  {
+    "pokedex_id": 119,
+    "name": "Seaking",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.08,
+    "max_cp_2016": 2043,
+    "most_common_wild_cps": [
+      510,
+      1021,
+      1430
+    ]
+  },
+  {
+    "pokedex_id": 120,
+    "name": "Staryu",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 1.95,
+    "max_cp_2016": 937,
+    "most_common_wild_cps": [
+      234,
+      468,
+      655
+    ]
+  },
+  {
+    "pokedex_id": 121,
+    "name": "Starmie",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.034,
+    "max_cp_2016": 2182,
+    "most_common_wild_cps": [
+      545,
+      1091,
+      1527
+    ]
+  },
+  {
+    "pokedex_id": 122,
+    "name": "Mr. Mime",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0031,
+    "max_cp_2016": 1494,
+    "most_common_wild_cps": [
+      373,
+      747,
+      1045
+    ]
+  },
+  {
+    "pokedex_id": 123,
+    "name": "Scyther",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.14,
+    "max_cp_2016": 2074,
+    "most_common_wild_cps": [
+      518,
+      1037,
+      1451
+    ]
+  },
+  {
+    "pokedex_id": 124,
+    "name": "Jynx",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.35,
+    "max_cp_2016": 1716,
+    "most_common_wild_cps": [
+      429,
+      858,
+      1201
+    ]
+  },
+  {
+    "pokedex_id": 125,
+    "name": "Electabuzz",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.074,
+    "max_cp_2016": 2119,
+    "most_common_wild_cps": [
+      529,
+      1059,
+      1483
+    ]
+  },
+  {
+    "pokedex_id": 126,
+    "name": "Magmar",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.1,
+    "max_cp_2016": 2265,
+    "most_common_wild_cps": [
+      566,
+      1132,
+      1585
+    ]
+  },
+  {
+    "pokedex_id": 127,
+    "name": "Pinsir",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.99,
+    "max_cp_2016": 2121,
+    "most_common_wild_cps": [
+      530,
+      1060,
+      1484
+    ]
+  },
+  {
+    "pokedex_id": 128,
+    "name": "Tauros",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.12,
+    "max_cp_2016": 1844,
+    "most_common_wild_cps": [
+      461,
+      922,
+      1290
+    ]
+  },
+  {
+    "pokedex_id": 129,
+    "name": "Magikarp",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 4.78,
+    "max_cp_2016": 262,
+    "most_common_wild_cps": [
+      65,
+      131,
+      183
+    ]
+  },
+  {
+    "pokedex_id": 130,
+    "name": "Gyarados",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0032,
+    "max_cp_2016": 2688,
+    "most_common_wild_cps": [
+      672,
+      1344,
+      1881
+    ]
+  },
+  {
+    "pokedex_id": 131,
+    "name": "Lapras",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.006,
+    "max_cp_2016": 2980,
+    "most_common_wild_cps": [
+      745,
+      1490,
+      2086
+    ]
+  },
+  {
+    "pokedex_id": 132,
+    "name": "Ditto",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0,
+    "max_cp_2016": 919,
+    "most_common_wild_cps": [
+      229,
+      459,
+      643
+    ]
+  },
+  {
+    "pokedex_id": 133,
+    "name": "Eevee",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 2.75,
+    "max_cp_2016": 1077,
+    "most_common_wild_cps": [
+      269,
+      538,
+      753
+    ]
+  },
+  {
+    "pokedex_id": 134,
+    "name": "Vaporeon",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.014,
+    "max_cp_2016": 2816,
+    "most_common_wild_cps": [
+      704,
+      1408,
+      1971
+    ]
+  },
+  {
+    "pokedex_id": 135,
+    "name": "Jolteon",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.012,
+    "max_cp_2016": 2140,
+    "most_common_wild_cps": [
+      535,
+      1070,
+      1498
+    ]
+  },
+  {
+    "pokedex_id": 136,
+    "name": "Flareon",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.013,
+    "max_cp_2016": 2643,
+    "most_common_wild_cps": [
+      660,
+      1321,
+      1850
+    ]
+  },
+  {
+    "pokedex_id": 137,
+    "name": "Porygon",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.012,
+    "max_cp_2016": 1691,
+    "most_common_wild_cps": [
+      422,
+      845,
+      1183
+    ]
+  },
+  {
+    "pokedex_id": 138,
+    "name": "Omanyte",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.14,
+    "max_cp_2016": 1119,
+    "most_common_wild_cps": [
+      279,
+      559,
+      783
+    ]
+  },
+  {
+    "pokedex_id": 139,
+    "name": "Omastar",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0061,
+    "max_cp_2016": 2233,
+    "most_common_wild_cps": [
+      558,
+      1116,
+      1563
+    ]
+  },
+  {
+    "pokedex_id": 140,
+    "name": "Kabuto",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.1,
+    "max_cp_2016": 1104,
+    "most_common_wild_cps": [
+      276,
+      552,
+      772
+    ]
+  },
+  {
+    "pokedex_id": 141,
+    "name": "Kabutops",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0032,
+    "max_cp_2016": 2130,
+    "most_common_wild_cps": [
+      532,
+      1065,
+      1491
+    ]
+  },
+  {
+    "pokedex_id": 142,
+    "name": "Aerodactyl",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.018,
+    "max_cp_2016": 2165,
+    "most_common_wild_cps": [
+      541,
+      1082,
+      1515
+    ]
+  },
+  {
+    "pokedex_id": 143,
+    "name": "Snorlax",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.016,
+    "max_cp_2016": 3112,
+    "most_common_wild_cps": [
+      778,
+      1556,
+      2178
+    ]
+  },
+  {
+    "pokedex_id": 144,
+    "name": "Articuno",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0,
+    "max_cp_2016": 2976,
+    "most_common_wild_cps": [
+      744,
+      1488,
+      2083
+    ]
+  },
+  {
+    "pokedex_id": 145,
+    "name": "Zapdos",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0,
+    "max_cp_2016": 3114,
+    "most_common_wild_cps": [
+      778,
+      1557,
+      2179
+    ]
+  },
+  {
+    "pokedex_id": 146,
+    "name": "Moltres",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0,
+    "max_cp_2016": 3240,
+    "most_common_wild_cps": [
+      810,
+      1620,
+      2268
+    ]
+  },
+  {
+    "pokedex_id": 147,
+    "name": "Dratini",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.3,
+    "max_cp_2016": 983,
+    "most_common_wild_cps": [
+      245,
+      491,
+      688
+    ]
+  },
+  {
+    "pokedex_id": 148,
+    "name": "Dragonair",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.02,
+    "max_cp_2016": 1485,
+    "most_common_wild_cps": [
+      371,
+      742,
+      1039
+    ]
+  },
+  {
+    "pokedex_id": 149,
+    "name": "Dragonite",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0011,
+    "max_cp_2016": 3500,
+    "most_common_wild_cps": [
+      875,
+      1750,
+      2450
+    ]
+  },
+  {
+    "pokedex_id": 150,
+    "name": "Mewtwo",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0,
+    "max_cp_2016": 4144,
+    "most_common_wild_cps": [
+      1036,
+      2072,
+      2900
+    ]
+  },
+  {
+    "pokedex_id": 151,
+    "name": "Mew",
+    "generation": 1,
+    "region": "Kanto",
+    "release_year": 2016,
+    "spawn_percent_chance": 0.0,
+    "max_cp_2016": 3299,
+    "most_common_wild_cps": [
+      824,
+      1649,
+      2309
+    ]
+  }
+]

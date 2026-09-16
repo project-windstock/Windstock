@@ -1,0 +1,981 @@
+"""
+"World Manager" -- local web UI for the PoGO private server.
+
+Runs on http://127.0.0.1:<port> (localhost only, never exposed to the phone or the
+network). Lets you click a map to place PokeStops, Gyms and Pokemon spawns at real
+coordinates, and tune the global spawn settings. Everything is written to
+places.json / events.json, which the game server hot-reloads on the next map
+refresh -- no restart needed.
+
+The map tiles come from OpenStreetMap, so this page needs internet; the placement
+controls and the coordinate list still work fine offline.
+"""
+import json
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from windstock.config import events as EV
+from windstock.config import places as PL
+from windstock.web import webui
+
+# Items the "Give to a player" panel can hand out (id -> label). These are the
+# ones the 2016 client actually knows how to display in the bag.
+# NOTE: 301 is the Lucky Egg and 501 is the Lure Module (Troy Disk). This list
+# previously had 501 labelled "Lucky Egg" and 602 labelled "Lure Module" -- 602 is
+# actually X Attack, so both of those handed out the wrong item.
+GIVEABLE = [(1, "Poke Ball"), (2, "Great Ball"), (3, "Ultra Ball"),
+            (101, "Potion"), (102, "Super Potion"), (103, "Hyper Potion"),
+            (104, "Max Potion"), (201, "Revive"), (202, "Max Revive"),
+            (701, "Razz Berry"), (401, "Incense"), (301, "Lucky Egg"),
+            (501, "Lure Module"), (902, "Egg Incubator")]
+
+# Kanto species names for the picker (index 0 unused)
+DEX = [""] + """Bulbasaur Ivysaur Venusaur Charmander Charmeleon Charizard Squirtle Wartortle
+Blastoise Caterpie Metapod Butterfree Weedle Kakuna Beedrill Pidgey Pidgeotto Pidgeot Rattata
+Raticate Spearow Fearow Ekans Arbok Pikachu Raichu Sandshrew Sandslash NidoranF Nidorina
+Nidoqueen NidoranM Nidorino Nidoking Clefairy Clefable Vulpix Ninetales Jigglypuff Wigglytuff
+Zubat Golbat Oddish Gloom Vileplume Paras Parasect Venonat Venomoth Diglett Dugtrio Meowth
+Persian Psyduck Golduck Mankey Primeape Growlithe Arcanine Poliwag Poliwhirl Poliwrath Abra
+Kadabra Alakazam Machop Machoke Machamp Bellsprout Weepinbell Victreebel Tentacool Tentacruel
+Geodude Graveler Golem Ponyta Rapidash Slowpoke Slowbro Magnemite Magneton Farfetchd Doduo
+Dodrio Seel Dewgong Grimer Muk Shellder Cloyster Gastly Haunter Gengar Onix Drowzee Hypno
+Krabby Kingler Voltorb Electrode Exeggcute Exeggutor Cubone Marowak Hitmonlee Hitmonchan
+Lickitung Koffing Weezing Rhyhorn Rhydon Chansey Tangela Kangaskhan Horsea Seadra Goldeen
+Seaking Staryu Starmie MrMime Scyther Jynx Electabuzz Magmar Pinsir Tauros Magikarp Gyarados
+Lapras Ditto Eevee Vaporeon Jolteon Flareon Porygon Omanyte Omastar Kabuto Kabutops Aerodactyl
+Snorlax Articuno Zapdos Moltres Dratini Dragonair Dragonite Mewtwo Mew""".split()
+
+PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Windstock &mdash; World Manager</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>__CSS__
+ /* --- World Manager only ------------------------------------------- */
+ #map{
+   height:54vh;min-height:330px;width:100%;background:#dfeee8;
+   border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+   box-shadow:inset 0 6px 14px rgba(20,60,80,.08);
+ }
+ .leaflet-container{font-family:var(--font)}
+ .leaflet-popup-content-wrapper,.leaflet-bar a{
+   border-radius:var(--r-sm);color:var(--ink);box-shadow:var(--shadow)
+ }
+ .leaflet-bar a:hover{background:var(--soft)}
+ .leaflet-control-attribution{background:rgba(255,255,255,.82)!important}
+ /* labels sitting inline in a .bar row, next to the controls */
+ .inline-label{align-self:center;font-size:12.5px;color:var(--ink2);font-weight:700}
+ .coins{color:#b8860b;font-family:var(--mono)}
+ .by{color:var(--ink3)}
+ /* biome pins + the live biome readout over the map */
+ #mapwrap{position:relative}
+ #biomehover{
+   position:absolute;left:10px;top:10px;z-index:900;display:none;pointer-events:none;
+   background:rgba(11,18,32,.88);color:#cfe3ff;border:1px solid #2b3d63;
+   border-radius:99px;padding:3px 10px;font:700 12px/1.5 var(--mono);
+   box-shadow:var(--shadow)
+ }
+ .biomechip{
+   background:rgba(11,18,32,.88);color:#8ff0c6;border:1px solid #2b3d63;
+   border-radius:99px;padding:2px 8px;font:700 11px/1.5 var(--mono);white-space:nowrap;
+   box-shadow:0 1px 4px rgba(0,0,0,.45)
+ }
+ /* server log -- a terminal-styled "window" */
+ .term{
+   font-family:var(--mono);font-size:12.5px;line-height:1.55;
+   background:#0b1220;color:#cfe3ff;border:1px solid #1d2a44;
+   border-radius:var(--r-sm);padding:12px 14px;height:300px;overflow:auto;
+   white-space:pre-wrap;overflow-wrap:anywhere;
+   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),var(--shadow);
+   scrollbar-width:thin;scrollbar-color:#2b3d63 #0b1220;
+ }
+ .term::-webkit-scrollbar{width:10px;height:10px}
+ .term::-webkit-scrollbar-thumb{background:#2b3d63;border-radius:99px}
+ .term .t-time{color:#6f86b5}
+ .term .err{color:#ff9a9a}
+ .term .ok{color:#8ff0c6}
+</style></head><body>
+<header>
+  <div class="brand">
+    <div class="mark"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5 3v18" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M5 6.6 L20 9 L20 13 L5 15.4 Z" fill="#fff"/>
+      <path d="M10 7.3v6.9M14.4 7.9v5.6" stroke="#2358d8" stroke-width="1.4" stroke-linecap="round"/>
+    </svg></div>
+    <div class="word"><h1>Windstock</h1><small>World Manager</small></div>
+  </div>
+  <nav class="topnav"><a class="active" href="/">Manager</a><a href="/downloads">World Data</a></nav>
+  <div class="spacer"></div>
+  <div class="pill" id="status">Running</div>
+  <div class="meta">
+    Placed <b id="cnt">0</b> &middot; <span id="counts"></span><br>
+    Event <b id="mode">-</b><br>
+    Wild spawns <b id="smode">-</b>
+  </div>
+</header>
+<main class="wrap">
+
+<div id="warn" class="warn" style="display:none">
+  <b>No Gyms in your world.</b> Random stops/gyms are OFF, so the only ones that exist are the
+  ones you place. Choose <b>Gym</b> below and click the map (or use Build ring) &mdash; then you
+  can tap it in game and station a Pokemon there.
+</div>
+<h2>World Manager</h2>
+<div class="bar">
+  <button id="b-stop" class="on" onclick="setMode('stop')">PokeStop</button>
+  <button id="b-gym" onclick="setMode('gym')">Gym</button>
+  <button id="b-mon" onclick="setMode('mon')">Pokemon</button>
+  <button id="b-biome" onclick="setMode('biome')" title="click the map to pin the biome at that point">Biome</button>
+  <select id="species"></select>
+  <input id="pname" placeholder="Name (optional)" size="14">
+  <input id="pimg" placeholder="Photo: file in photos/ or URL" size="20">
+  <button onclick="togProc('forts')" id="b-pf">Random stops/gyms: OFF</button>
+  <button onclick="togProc('spawns')" id="b-ps">Random Pokemon: ON</button>
+  <button class="danger" onclick="clearAll()">Clear all</button>
+</div>
+<div id="mapwrap"><div id="map"></div><div id="biomehover"></div></div>
+<div class="hint">Click the map to place the selected object. Click a marker to remove it.
+Changes apply live &mdash; walk around in game and they'll appear. Hover the map to read
+the biome anywhere, or pick <b>Biome</b> and click to pin the biome at that point.</div>
+
+<h2>Quick Build</h2>
+<div class="bar">
+  <span class="inline-label">Ring of stops around trainer:</span>
+  <input id="ring-n" type="number" value="8" min="1" max="24" size="3" title="how many stops">
+  <input id="ring-r" type="number" value="60" min="10" max="500" size="4" title="radius in metres">
+  <button onclick="ring()">Build ring</button>
+</div>
+
+<h2>Raid</h2>
+<div class="bar">
+  <button onclick="raidToggle()" id="b-raid">Raid: off</button>
+  <select id="raid-mon"></select>
+  <label class="inline-label">CP
+    <input id="raid-cp" type="number" value="3000" min="10" max="9999" size="5"></label>
+  <input id="raid-name" value="raid" size="8" title="trainer name shown at the gym">
+  <button onclick="raidSave()">Apply</button>
+</div>
+<div class="hint" id="raidhint">Puts one boss in EVERY gym, replacing whatever is
+defending (real defenders are sent home first, nothing is lost). Beat it and it drops
+at your feet as a wild Pokemon you can catch — you have 10 minutes.</div>
+
+<h2>PokeStop Loot</h2>
+<div class="bar">
+  <span class="inline-label">Items per spin:</span>
+  <label class="inline-label">min
+    <input id="loot-min" type="number" value="3" min="0" max="10" size="2"></label>
+  <label class="inline-label">max
+    <input id="loot-max" type="number" value="10" min="1" max="10" size="2"></label>
+  <span class="hint" style="align-self:center">chance % is rolled once per spin per item;
+  0 = never drops but keeps the row. Applies to the next spin (a few seconds).</span>
+</div>
+<div class="list" id="loot-rows"></div>
+<div class="bar">
+  <select id="loot-add"></select>
+  <button onclick="lootAddRow()">Add item</button>
+  <button class="go" style="width:auto;padding:10px 26px" onclick="lootSave()">Save loot table</button>
+</div>
+<div class="hint" id="loothint">What every PokeStop spin can hand out. Balls and revives
+always drop; berries and the specials are rolled. Chance 0 rows (Master Ball, Bluk/
+Nanab/Wepear/Pinap) are switched off until you raise their chance.</div>
+
+<h2>Nominations</h2>
+<div class="hint">Added by players from the in-game Help Center
+(Settings &rarr; support). These go straight into the world &mdash; one per player
+per day. Remove one here if it shouldn't be there.</div>
+<div class="list" id="noms"><div class="empty">No nominations waiting.</div></div>
+
+<h2>Give to a player</h2>
+<div class="bar">
+  <span class="inline-label">Trainer</span>
+  <input id="giveuser" list="accounts" placeholder="username" size="14"
+         title="Leave blank for the trainer currently playing">
+  <datalist id="accounts"></datalist>
+  <span class="hint" style="align-self:center">Blank = whoever is playing now</span>
+</div>
+<div class="bar">
+  <select id="giveitem"></select>
+  <input id="giveqty" type="number" value="20" min="1" max="999" size="4">
+  <button onclick="give()">Add items</button>
+</div>
+<div class="bar">
+  <select id="givecandy"></select>
+  <input id="givecandyqty" type="number" value="25" min="1" max="999" size="4">
+  <button onclick="giveCandy()">Add candy</button>
+</div>
+<div class="bar">
+  <input id="givedust" type="number" value="1000" min="1" max="999999" size="7">
+  <button onclick="giveDust()">Add stardust</button>
+</div>
+<div class="bar">
+  <input id="newpw" placeholder="New password" size="14">
+  <button onclick="resetPw()">Reset password</button>
+</div>
+<div class="hint" id="givehint">Candy goes to the whole evolution family, so Charmander
+candy also powers up Charmeleon and Charizard. Everything shows up in game within a
+few seconds.</div>
+
+<h2>Events</h2>
+<div class="bar" id="presets"></div>
+<div class="bar">
+  <span class="inline-label">Wild spawn source</span>
+  <button id="b-biomes" onclick="setSpawnMode('biomes')">Biomes &ndash; real terrain + cpdata.json (default)</button>
+  <button id="b-cpdata" onclick="setSpawnMode('cpdata')">cpdata.json only</button>
+  <button id="b-classic" onclick="setSpawnMode('classic')">Classic biome / rarity</button>
+</div>
+<div class="hint">Biomes is the default: species still come from cpdata.json's 2016 spawn
+chances (with its most common wild CP), but the OpenStreetMap terrain around you decides
+which of them dominate &mdash; Water types by rivers and coasts, Bug and Grass in the woods,
+Rock downtown on the concrete. The spawn table lives in <b>biomes.json</b> next to
+cpdata.json; the terrain is fetched from OpenStreetMap and cached in data/osm_biomes.json.
+"cpdata.json only" drops the terrain flavour; Classic uses the built-in biome and rarity
+tiers instead. Everything below (density, species mode, CP range) still applies.</div>
+<div class="bar">
+  <span class="inline-label">Force biome (testing)</span>
+  <select id="biome-force" onchange="setBiomeForce()"></select>
+  <span class="hint" id="forcehint"></span>
+</div>
+<div class="hint" id="biomehint"></div>
+<div class="bar">
+  <input id="ev-name" placeholder="Event name" size="14">
+  <label class="inline-label">Density
+    <input id="ev-density" type="number" min="0" max="60" size="3"></label>
+  <select id="ev-mode">
+    <option value="all">All 151</option><option value="list">From list</option>
+    <option value="single">One species</option>
+  </select>
+  <input id="ev-list" placeholder="1,4,7,25" size="12" title="species list">
+  <label class="inline-label">CP
+    <input id="ev-min" type="number" min="10" max="5000" size="4"> &ndash;
+    <input id="ev-max" type="number" min="10" max="5000" size="4"></label>
+  <button onclick="saveEv()">Apply event</button>
+</div>
+<div class="hint">Density = wild Pokemon around you (0&ndash;60). "One species" + a
+Pokemon makes a themed event, e.g. a Pikachu festival.</div>
+
+<div class="list" id="list"></div>
+
+<h2>Server log</h2>
+<div class="bar">
+  <button id="b-logpause" onclick="toggleLogPause()">Pause</button>
+  <button onclick="loadLogs(true)">Refresh</button>
+  <button class="danger" onclick="clearLogs()">Clear log</button>
+  <span class="hint" id="loghint">live tail of data/server-log.txt</span>
+</div>
+<div class="term" id="term">(no log yet)</div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let mode='stop', map, layer, biomeLayer, data={forts:[],spawns:[]};
+const $=i=>document.getElementById(i);
+const DEX=__DEX__;
+
+function setMode(m){mode=m;['stop','gym','mon','biome'].forEach(k=>{const e=$('b-'+k);
+  if(e) e.className=(k===m?'on':'');});}
+function icon(color,txt){return L.divIcon({className:'',html:
+ `<div style="background:${color};border:2px solid #fff;border-radius:50%;width:26px;height:26px;
+   display:flex;align-items:center;justify-content:center;font:700 11px monospace;color:#fff;
+   box-shadow:0 1px 4px rgba(0,0,0,.5)">${txt}</div>`, iconSize:[26,26], iconAnchor:[13,13]});}
+
+let player={lat:0,lng:0};
+async function ring(){
+  if(!player.lat){alert('No trainer position yet - open the game first, or click the map to place manually.');return;}
+  await post('/api/ring',{lat:player.lat,lng:player.lng,count:+$('ring-n').value,
+    radius_m:+$('ring-r').value,gym:true});
+  load();
+}
+async function makeStop(){
+  if(!player.lat){alert('No trainer position yet - open the game first so it reports where you are.');return;}
+  const r = await post('/api/makestop',{lat:player.lat,lng:player.lng,player:$('giveuser').value});
+  const h=$('stophint'); h.textContent=(r.ok?'✓ ':'✗ ')+r.message;
+  h.style.color = r.ok ? '#7fd1a6' : '#ff9a9a';
+  load();
+}
+async function saveEv(){
+  await post('/api/save',{event_name:$('ev-name').value,spawn_density:+$('ev-density').value,
+    species_mode:$('ev-mode').value,
+    species_list:$('ev-list').value.split(',').map(x=>parseInt(x.trim())).filter(x=>x>=1&&x<=151),
+    single_species:+$('species').value,min_cp:+$('ev-min').value,max_cp:+$('ev-max').value});
+  load();
+}
+async function setSpawnMode(m){
+  await post('/api/save',{spawn_mode:m});
+  load();
+}
+/* ---- biomes: read the terrain at any point, pin it, or force one ---- */
+function biomeIcon(name){return L.divIcon({className:'',
+  html:'<div class="biomechip">'+name+'</div>',iconSize:null,iconAnchor:[0,10]});}
+function showBiome(name,forced){
+  const box=$('biomehover'); if(!box) return;
+  if(!name){ box.style.display='none'; return; }
+  box.textContent='Biome: '+name+(forced?' (forced)':'');
+  box.style.display='block';
+}
+let hoverAt=0, hoverSeq=0;
+async function hoverBiome(lat,lng){
+  const t=Date.now();
+  if(t-hoverAt<400) return;            // don't hammer the server while moving
+  hoverAt=t;
+  const seq=++hoverSeq;
+  const r=await post('/api/biome',{lat,lng});
+  if(seq!==hoverSeq) return;           // a newer hover already answered
+  showBiome(((r.results||[])[0]||{}).name, r.forced);
+}
+async function pinBiome(lat,lng){
+  const r=await post('/api/biome',{lat,lng});
+  const hit=(r.results||[])[0]||{};
+  const m=L.marker([lat,lng],{icon:biomeIcon(hit.name||'?')}).addTo(biomeLayer);
+  m.bindTooltip('Biome: '+(hit.name||'?')+(r.forced?' (forced)':'')
+    +' — click to remove');
+  m.on('click',()=>biomeLayer.removeLayer(m));
+  showBiome(hit.name, r.forced);
+}
+async function setBiomeForce(){
+  await post('/api/save',{force_biome:$('biome-force').value});
+  load();
+}
+async function preset(n){await post('/api/preset',{name:n});load();}
+function raidPaint(r){
+  $('b-raid').textContent = 'Raid: ' + (r.on ? 'ON' : 'off');
+  $('b-raid').style.background = r.on ? '#8a2b2b' : '';
+  if(r.pokemon_id) $('raid-mon').value = r.pokemon_id;
+  if(r.cp) $('raid-cp').value = r.cp;
+  if(r.trainer) $('raid-name').value = r.trainer;
+}
+async function raidToggle(){
+  const r = await post('/api/raid', {on: $('b-raid').textContent.indexOf('ON') < 0,
+    pokemon_id:+$('raid-mon').value, cp:+$('raid-cp').value, trainer:$('raid-name').value});
+  raidPaint(r); $('raidhint').textContent = r.message; load();
+}
+async function raidSave(){
+  const r = await post('/api/raid', {pokemon_id:+$('raid-mon').value,
+    cp:+$('raid-cp').value, trainer:$('raid-name').value});
+  raidPaint(r); $('raidhint').textContent = r.message; load();
+}
+async function loadNoms(){
+  const r = await post('/api/noms', {});
+  const box = $('noms');
+  if (!r.rows || !r.rows.length){
+    box.innerHTML = '<div class="empty">Nothing added yet.</div>'; return;
+  }
+  box.innerHTML = '';
+  r.rows.forEach(function(n){
+    const d = document.createElement('div'); d.className='row';
+    d.innerHTML = '<span class="tag ' + (n.kind==='gym'?'gym':'stop') + '">'
+      + (n.kind==='gym'?'GYM':'STOP') + '</span>'
+      + '<span class="t"><b>' + n.name + '</b> &mdash; ' + n.lat.toFixed(5) + ', '
+      + n.lng.toFixed(5) + '<br><small style="color:#8892a0">by ' + n.player
+      + (n.note ? ' &middot; ' + n.note : '') + '</small></span>';
+    const no = document.createElement('span');
+    no.className='x'; no.textContent='remove';
+    no.onclick = function(){ resolveNom(n.id,'rejected'); };
+    d.appendChild(no); box.appendChild(d);
+  });
+}
+async function resolveNom(id, status){
+  const r = await post('/api/noms/resolve', {id: id, status: status});
+  loadNoms(); load();
+}
+function giveResult(r){
+  $('givehint').textContent = (r.ok?'\u2713 ':'\u2717 ') + r.message;
+  $('givehint').style.color = r.ok ? '#7fd1a6' : '#ff9a9a';
+  load();
+}
+async function give(){
+  giveResult(await post('/api/give',{player:$('giveuser').value,
+    kind:'item', item_id:+$('giveitem').value, count:+$('giveqty').value}));
+}
+async function giveCandy(){
+  giveResult(await post('/api/give',{player:$('giveuser').value,
+    kind:'candy', pokemon_id:+$('givecandy').value, count:+$('givecandyqty').value}));
+}
+async function resetPw(){
+  const who = $('giveuser').value.trim();
+  if(!who) return giveResult({ok:false, message:'Type which trainer first'});
+  giveResult(await post('/api/setpw', {player: who, password: $('newpw').value}));
+  $('newpw').value='';
+}
+async function giveDust(){
+  giveResult(await post('/api/give',{player:$('giveuser').value,
+    kind:'stardust', count:+$('givedust').value}));
+}
+
+/* ---- PokeStop loot table editor ---- */
+const LOOT_POOL=[[1,'Poke Ball'],[2,'Great Ball'],[3,'Ultra Ball'],[4,'Master Ball'],
+  [101,'Potion'],[102,'Super Potion'],[103,'Hyper Potion'],[104,'Max Potion'],
+  [201,'Revive'],[202,'Max Revive'],  [701,'Razz Berry'],[702,'Bluk Berry'],[703,'Nanab Berry'],
+  [704,'Wepear Berry'],[705,'Pinap Berry'],[301,'Lucky Egg'],[401,'Incense'],
+  [501,'Lure Module'],[902,'Egg Incubator']];
+function lootPaint(rows){
+  const box=$('loot-rows'); box.innerHTML='';
+  (rows||[]).forEach(function(r){
+    const d=document.createElement('div'); d.className='row';
+    d.innerHTML = '<span class="tag stop">'+r[0]+'</span>'
+      + '<span class="t"><b>'+r[1]+'</b></span>'
+      + '<label class="inline-label">chance % <input type="number" class="l-ch"'
+      + ' value="'+r[2]+'" min="0" max="100" size="3"></label>'
+      + '<label class="inline-label">min <input type="number" class="l-lo"'
+      + ' value="'+r[3]+'" min="1" max="99" size="2"></label>'
+      + '<label class="inline-label">max <input type="number" class="l-hi"'
+      + ' value="'+r[4]+'" min="1" max="99" size="2"></label>';
+    const x=document.createElement('span'); x.className='x'; x.textContent='remove';
+    x.onclick=function(){ d.remove(); };
+    d.appendChild(x); box.appendChild(d);
+  });
+  if(!rows || !rows.length)
+    box.innerHTML='<div class="empty">No loot rows -- add an item below.</div>';
+}
+function lootRead(){
+  return [...document.querySelectorAll('#loot-rows .row')].map(function(d){
+    const num=c=>+d.querySelector('.'+c).value;
+    return [d.querySelector('.tag').textContent, d.querySelector('.t b').textContent,
+            num('l-ch'), num('l-lo'), num('l-hi')];
+  });
+}
+async function lootSave(){
+  const r=await post('/api/loot',{rows:lootRead(), min_items:+$('loot-min').value,
+    max_items:+$('loot-max').value});
+  const h=$('loothint'); h.textContent=(r.ok?'\u2713 ':'\u2717 ')+r.message;
+  h.style.color = r.ok ? '#7fd1a6' : '#ff9a9a';
+  load();
+}
+function lootAddRow(){
+  const sel=$('loot-add'); if(!sel.value) return;
+  const p=LOOT_POOL.find(x=>x[0]==+sel.value); if(!p) return;
+  const rows=lootRead();
+  if(rows.some(r=>+r[0]===p[0])){ sel.value=''; return; }
+  rows.push([p[0], p[1], 0, 1, 1]);
+  lootPaint(rows); sel.value='';
+}
+
+async function load(){
+  const j=await (await fetch('/api/world')).json();
+  data=j.places; player=j.player; $('cnt').textContent=data.forts.length+data.spawns.length;
+  const ngym=data.forts.filter(f=>f.kind==='gym').length;
+  const nstop=data.forts.length-ngym;
+  $('warn').style.display=(ngym===0&&!data.procedural_forts)?'block':'none';
+  $('counts').textContent=nstop+' PokeStops / '+ngym+' Gyms / '+data.spawns.length+' spawn points';
+  $('mode').textContent=j.config.event_name+' / density '+j.config.spawn_density;
+  $('b-pf').textContent='Random stops/gyms: '+(data.procedural_forts?'ON':'OFF');
+  $('b-ps').textContent='Random Pokemon: '+(data.procedural_spawns?'ON':'OFF');
+  $('b-pf').className=data.procedural_forts?'on':'';
+  $('b-ps').className=data.procedural_spawns?'on':'';
+  const c=j.config;
+  const sm=(c.spawn_mode==='classic'||c.spawn_mode==='cpdata')?c.spawn_mode:'biomes';
+  $('smode').textContent=(sm==='classic')?'classic biome/tier'
+    :(sm==='cpdata'?'cpdata.json only':'biomes + cpdata.json');
+  $('b-biomes').className=(sm==='biomes')?'on':'';
+  $('b-cpdata').className=(sm==='cpdata')?'on':'';
+  $('b-classic').className=(sm==='classic')?'on':'';
+  const b=j.biome||{};
+  const bh=$('biomehint');
+  if(bh) bh.textContent='Terrain here: '+(b.forced?('FORCED to "'+b.forced+'"')
+      :(b.name||'unknown (no trainer position yet)'))
+    +' \u00b7 '+(b.online===false?'OpenStreetMap lookups OFF'
+      :('OpenStreetMap data: '+(b.points||0)+' terrain points, '+(b.cells||0)
+        +' cached areas'));
+  const sel=$('biome-force');
+  if(sel && b.biomes && !sel.dataset.done){
+    const auto=document.createElement('option');
+    auto.value=''; auto.textContent='Auto \u2014 real OpenStreetMap terrain';
+    sel.appendChild(auto);
+    b.biomes.forEach(n=>{const o=document.createElement('option');
+      o.value=n;o.textContent=n;sel.appendChild(o);});
+    sel.dataset.done='1';
+  }
+  if(sel) sel.value=b.forced||'';
+  const fh=$('forcehint');
+  if(fh) fh.textContent=b.forced
+    ? ('every spawn uses "'+b.forced+'" \u2014 pick Auto to go back')
+    : 'auto: each area uses its own real terrain';
+  $('ev-name').value=c.event_name; $('ev-density').value=c.spawn_density;
+  $('ev-mode').value=c.species_mode; $('ev-list').value=(c.species_list||[]).join(',');
+  $('ev-min').value=c.min_cp; $('ev-max').value=c.max_cp;
+  if(j.loot && !$('loot-rows').dataset.done){
+    lootPaint(j.loot); $('loot-rows').dataset.done='1';
+    $('loot-min').value=j.loot_min; $('loot-max').value=j.loot_max;
+  }
+  if(!$('presets').dataset.done){
+    (j.presets||[]).forEach(n=>{const b=document.createElement('button');
+      b.textContent=n;b.onclick=()=>preset(n);$('presets').appendChild(b);});
+    $('presets').dataset.done='1';
+  }
+  if(!map){
+    map=L.map('map').setView([j.player.lat||39.19,j.player.lng||-96.58], j.player.lat?18:16);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+      attribution:'&copy; OpenStreetMap'}).addTo(map);
+    layer=L.layerGroup().addTo(map);
+    biomeLayer=L.layerGroup().addTo(map);
+    map.on('click',e=>place(e.latlng.lat,e.latlng.lng));
+    map.on('mousemove',e=>hoverBiome(e.latlng.lat,e.latlng.lng));
+    map.on('mouseout',()=>showBiome(null));
+    if(j.player.lat) L.circleMarker([j.player.lat,j.player.lng],{radius:7,color:'#ffd34d',
+      fillColor:'#ffd34d',fillOpacity:1}).addTo(map).bindTooltip('Trainer');
+  }
+  draw();
+}
+function draw(){
+  layer.clearLayers();
+  data.forts.forEach(f=>L.marker([f.lat,f.lng],{icon:icon(f.kind==='gym'?'#c0392b':'#2b6cf6',
+    f.kind==='gym'?'G':'S')}).addTo(layer).bindTooltip(f.name).on('click',()=>del(f.id)));
+  data.spawns.forEach(s=>L.marker([s.lat,s.lng],{icon:icon(s.pokemon_id?'#1f9d55':'#7a5cc4',s.pokemon_id?String(s.pokemon_id):'?')})
+    .addTo(layer).bindTooltip(s.pokemon_id?(DEX[s.pokemon_id]||('#'+s.pokemon_id)):'Random').on('click',()=>del(s.id)));
+  const rows=[...data.forts.map(f=>({id:f.id,cls:f.kind==='gym'?'gym':'stop',
+      tag:f.kind==='gym'?'GYM':'STOP',
+      t:`${f.name}${f.image?' [photo]':''} — ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}`})),
+    ...data.spawns.map(s=>({id:s.id,cls:'mon',tag:s.pokemon_id?'MON':'RANDOM',
+      t:`${s.pokemon_id?(DEX[s.pokemon_id]||('#'+s.pokemon_id)):'Random Pokemon'} — ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`}))];
+  $('list').innerHTML = rows.length ? rows.map(r=>
+    `<div class="row"><span class="tag ${r.cls}">${r.tag}</span><span class="t">${r.t}</span>
+     <span class="x" onclick="del('${r.id}')">remove</span></div>`).join('')
+    : '<div class="empty">Nothing placed yet — click the map above.</div>';
+}
+async function post(u,b){return (await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(b||{})})).json();}
+async function place(lat,lng){
+  if(mode==='biome'){ await pinBiome(lat,lng); return; }   // Biome: pin, don't place
+  const name=$('pname').value;
+  if(mode==='mon') await post('/api/spawn',{lat,lng,pokemon_id:+$('species').value,name});
+  else await post('/api/fort',{lat,lng,kind:mode,name,image:$('pimg').value});
+  load();
+}
+async function del(id){await post('/api/remove',{id});load();}
+async function clearAll(){if(confirm('Remove every placed object?')){await post('/api/clear',{});load();}}
+async function togProc(what){
+  const cur = what==='forts' ? data.procedural_forts : data.procedural_spawns;
+  await post('/api/procedural',{on:!cur, what}); load();
+}
+(__GIVEABLE__).forEach(([id,label])=>{const o=document.createElement('option');
+  o.value=id;o.textContent=label;$('giveitem').appendChild(o);});
+DEX.forEach((n,i)=>{if(i){const o=document.createElement('option');o.value=i;
+  o.textContent=n+' candy';$('givecandy').appendChild(o);}});
+$('givecandy').value=25;
+DEX.forEach((n,i)=>{if(i){const o=document.createElement('option');o.value=i;
+  o.textContent=i+' '+n;$('raid-mon').appendChild(o);}});
+$('raid-mon').value=150;
+post('/api/raid',{}).then(raidPaint);
+post('/api/accounts',{}).then(r=>{(r.accounts||[]).forEach(n=>{
+  const o=document.createElement('option');o.value=n;$('accounts').appendChild(o);});});
+{const o=document.createElement('option');o.value=0;
+ o.textContent='Random Pokemon';$('species').appendChild(o);}
+DEX.forEach((n,i)=>{if(i){const o=document.createElement('option');o.value=i;
+  o.textContent=i+' '+n;$('species').appendChild(o);}});
+$('species').value=0;
+LOOT_POOL.forEach(function(p){const o=document.createElement('option');
+  o.value=p[0];o.textContent=p[1];$('loot-add').appendChild(o);});
+/* ---- server log, in its own terminal window ---- */
+let logPaused=false;
+function escLog(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function paintLog(lines){
+  return lines.map(function(l){
+    const bad=/\[!\]|Traceback|Error|FAILED|refused/.test(l);
+    const good=/\[ok\]|\[ready\]/.test(l);
+    const m=l.match(/^(\d{2}:\d{2}:\d{2})(.*)$/);
+    const body=m ? '<span class="t-time">'+m[1]+'</span>'+escLog(m[2]) : escLog(l);
+    return bad ? '<span class="err">'+body+'</span>'
+         : good ? '<span class="ok">'+body+'</span>' : body;
+  }).join('\n');
+}
+async function loadLogs(force){
+  if(logPaused && !force) return;
+  try{
+    const r=await (await fetch('/api/logs?lines=400')).json();
+    const t=$('term');
+    const stick=(t.scrollTop+t.clientHeight)>=(t.scrollHeight-40);
+    const lines=r.lines||[];
+    t.innerHTML = lines.length ? paintLog(lines) : '(log is empty)';
+    if(stick) t.scrollTop=t.scrollHeight;
+    const kb=(r.bytes||0)/1024;
+    $('loghint').textContent='data/server-log.txt — '
+      +(kb>=1024?(kb/1024).toFixed(1)+' MB':kb.toFixed(1)+' KB');
+  }catch(e){ $('loghint').textContent='log unavailable: '+e; }
+}
+function toggleLogPause(){
+  logPaused=!logPaused;
+  const b=$('b-logpause');
+  b.textContent=logPaused?'Resume':'Pause';
+  b.className=logPaused?'on':'';
+  if(!logPaused) loadLogs(true);
+}
+async function clearLogs(){
+  if(!confirm('Clear the server log?')) return;
+  await post('/api/logs/clear',{});
+  loadLogs(true);
+}
+load(); loadNoms(); loadLogs();
+setInterval(load, 15000); setInterval(loadNoms, 20000); setInterval(loadLogs, 3000);
+</script></body></html>"""
+
+
+def _biome_at(d):
+    """Which biome is at a point (or a batch of points)?
+
+    Powers the World Manager map's hover readout and its Biome brush, so "what
+    biome is here" answers with exactly what the spawner will use at that spot.
+    """
+    from windstock.config import settings as CFG
+    from windstock.geo import biomes as _biomes
+    level = CFG.get("spawns", "biome_size", cast=int)
+    asked = d.get("points") if isinstance(d.get("points"), list) else [d]
+    results = []
+    for q in asked[:64]:                      # cap a batch: this is a UI query
+        try:
+            qlat, qlng = float(q["lat"]), float(q["lng"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        results.append({"lat": qlat, "lng": qlng,
+                        "name": _biomes.biome_for(qlat, qlng, level)})
+    st = _biomes.status()
+    return {"results": results, "forced": st.get("forced", ""),
+            "online": st.get("online", True), "points": st.get("points", 0),
+            "cells": st.get("cells", 0)}
+
+
+class _Handler(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, code, ctype, body):
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def _json(self, obj, code=200):
+        self._send(code, "application/json", json.dumps(obj))
+
+    def do_GET(self):
+        p = self.path.split("?")[0]
+        if p == "/":
+            return self._send(200, "text/html; charset=utf-8",
+                              webui.render(PAGE)
+                                  .replace("__DEX__", json.dumps(DEX))
+                                  .replace("__GIVEABLE__", json.dumps(GIVEABLE)))
+
+        if p == "/downloads":
+            from windstock.web import downloads_ui
+            return self._send(200, "text/html; charset=utf-8", downloads_ui.world())
+        if p == "/downloads/us":
+            from windstock.web import downloads_ui
+            return self._send(200, "text/html; charset=utf-8", downloads_ui.us())
+        if p == "/api/downloads/status":
+            from windstock.geo import poidownload
+            return self._json(poidownload.status())
+        if p == "/api/world":
+            try:
+                from windstock.game import rpc
+                lat, lng = rpc._last_loc[0], rpc._last_loc[1]
+            except Exception:
+                lat, lng = 0.0, 0.0
+            from windstock.game import world
+            from windstock.config import settings as CFG
+            from windstock.game import protocol
+            # Which biome the trainer is standing in right now, so the Events
+            # panel can show the terrain the spawns are being flavoured by.
+            biome = {}
+            try:
+                from windstock.geo import biomes as _biomes
+                biome = _biomes.status()
+                if lat or lng:
+                    biome["name"] = _biomes.biome_for(
+                        lat, lng, CFG.get("spawns", "biome_size", cast=int))
+            except Exception:
+                biome = {}
+            return self._json({"places": PL.get(), "config": EV.get(),
+                               "biome": biome,
+                               "presets": list(EV.PRESETS),
+                               "storage": world.storage(),
+                               "prices": {
+                                   "pokemon_step": CFG.get("storage", "pokemon_upgrade_step"),
+                                   "pokemon_cost": CFG.get("storage", "pokemon_upgrade_cost"),
+                                   "items_step": CFG.get("storage", "items_upgrade_step"),
+                                   "items_cost": CFG.get("storage", "items_upgrade_cost")},
+                               "loot": [list(r) for r in protocol.loot_table()],
+                               "loot_min": CFG.get("pokestops", "min_items_per_spin"),
+                               "loot_max": CFG.get("pokestops", "max_items_per_spin"),
+                               "player": {"lat": lat, "lng": lng}})
+        if p == "/api/logs":
+            # Live tail of server-log.txt for the "Server log" panel. Only the
+            # tail is read, so a multi-megabyte log costs the same as a small one.
+            import urllib.parse as _up
+            from windstock.cli import logfile
+            q = _up.parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+            try:
+                n = max(1, min(2000, int((q.get("lines") or ["400"])[0])))
+            except (TypeError, ValueError):
+                n = 400
+            path = logfile.log_path()
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                size = 0
+            return self._json({"lines": logfile.tail(n), "path": path,
+                               "bytes": size, "logging": bool(logfile._LOG.get("on"))})
+        self._send(404, "text/plain", "not found")
+
+    def do_POST(self):
+        p = self.path.split("?")[0]
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            d = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            d = {}
+        try:
+            if p == "/downloads/start":
+                from windstock.geo import poidownload
+                region = (d.get("region") or "").strip()
+                name = (d.get("name") or region).strip()
+                started = poidownload.start(name, region) if region else False
+                return self._json({"ok": bool(region), "started": started})
+            if p == "/downloads/remove":
+                from windstock.geo import poidownload
+                region = (d.get("region") or "").strip()
+                name = (d.get("name") or region).strip()
+                started = poidownload.remove(name, region) if region else False
+                return self._json({"ok": bool(region), "started": started})
+            if p == "/api/fort":
+                return self._json(PL.add_fort(d.get("lat"), d.get("lng"),
+                                              d.get("kind", "stop"), d.get("name", ""),
+                                              d.get("image", "")))
+            if p == "/api/spawn":
+                return self._json(PL.add_spawn(d.get("lat"), d.get("lng"),
+                                               d.get("pokemon_id", 1), d.get("name", "")))
+            if p == "/api/remove":
+                return self._json({"removed": PL.remove(d.get("id", ""))})
+            if p == "/api/clear":
+                return self._json(PL.clear(d.get("what", "all")))
+            if p == "/api/give":
+                from windstock.game import world
+                import contextlib as _ctx
+                who = (d.get("player") or "").strip()
+                kind = d.get("kind", "item")
+                # Blank means "whoever is playing right now", which keeps the old
+                # one-click behaviour. A name is validated against existing saves
+                # so a typo can't quietly create an empty account.
+                try:
+                    ctx = world.acting_as(who) if who else _ctx.nullcontext()
+                except KeyError:
+                    return self._json({"ok": False,
+                                       "message": f"no account called {who!r}"})
+                try:
+                    with ctx:
+                        target = who or world.current().username
+                        if kind == "stardust":
+                            cnt = max(1, min(999999, int(d.get("count", 1))))
+                            total = world.add_stardust(cnt)
+                            msg = f"gave {target} {cnt} stardust (now {total})"
+                        elif kind == "candy":
+                            from windstock.game import protocol as P
+                            pid = int(d.get("pokemon_id", 0))
+                            cnt = max(1, min(999, int(d.get("count", 1))))
+                            if not 1 <= pid <= 151:
+                                return self._json({"ok": False,
+                                                   "message": "unknown Pokemon"})
+                            fam = P.pokemon_family(pid)
+                            total = world.add_candy(fam, cnt)
+                            label = DEX[pid] if pid < len(DEX) else str(pid)
+                            fam_label = DEX[fam] if fam < len(DEX) else str(fam)
+                            msg = (f"gave {target} {cnt} {fam_label} candy "
+                                   f"(now {total})")
+                            if fam != pid:
+                                msg += f" — {label}'s family"
+                        else:
+                            iid = int(d.get("item_id", 0))
+                            cnt = max(1, min(999, int(d.get("count", 1))))
+                            names = dict(GIVEABLE)
+                            if iid not in names:
+                                return self._json({"ok": False,
+                                                   "message": "unknown item"})
+                            total = world.add_item(iid, cnt)
+                            msg = (f"gave {target} {cnt} x {names[iid]} "
+                                   f"(now {total})")
+                except KeyError:
+                    return self._json({"ok": False,
+                                       "message": f"no account called {who!r}"})
+                return self._json({"ok": True, "message": msg})
+            if p == "/api/noms":
+                from windstock.web import helpcenter
+                return self._json({"rows": helpcenter.recent()})
+            if p == "/api/noms/resolve":
+                from windstock.web import helpcenter
+                row = helpcenter.resolve(d.get("id", ""), d.get("status", "rejected"))
+                if not row:
+                    return self._json({"ok": False, "message": "unknown nomination"})
+                # Places are added straight away now, so "resolve" only ever
+                # means taking one back out again.
+                for f in list(PL.get()["forts"]):
+                    if (abs(f["lat"] - row["lat"]) < 1e-6
+                            and abs(f["lng"] - row["lng"]) < 1e-6):
+                        PL.remove(f["id"])
+                return self._json({"ok": True,
+                                   "message": f"removed {row['name']!r}"})
+            if p == "/api/setpw":
+                from windstock.game import world
+                who = (d.get("player") or "").strip()
+                pw = d.get("password") or ""
+                if not pw:
+                    return self._json({"ok": False, "message": "pick a password"})
+                if world.set_password(who, pw):
+                    return self._json({"ok": True,
+                                       "message": f"{who}'s password has been reset"})
+                return self._json({"ok": False,
+                                   "message": f"no account called {who!r}"})
+            if p == "/api/makestop":
+                # "Spawn a PokeStop in my area" -- first one free, then it costs
+                # coins. Drops a real, spinnable stop at the trainer's location
+                # (their home/business), which is what a rural player with no
+                # nearby OSM stops needs. Names it after the nearest OSM place if
+                # there is one within ~250 m, else a plain Windstock stop.
+                from windstock.game import world, rpc as _rpc
+                import contextlib as _ctx, math as _math
+                who = (d.get("player") or "").strip()
+                cost = int(d.get("cost", 1000))
+                try:
+                    lat = float(d.get("lat")) if d.get("lat") is not None else _rpc._last_loc[0]
+                    lng = float(d.get("lng")) if d.get("lng") is not None else _rpc._last_loc[1]
+                except (TypeError, ValueError):
+                    lat, lng = _rpc._last_loc[0], _rpc._last_loc[1]
+                if abs(lat) < 1e-6 and abs(lng) < 1e-6:
+                    return self._json({"ok": False, "message":
+                                       "no player location yet -- open the game so it "
+                                       "reports where you are, then try again"})
+                try:
+                    ctx = world.acting_as(who) if who else _ctx.nullcontext()
+                    ctx.__enter__()
+                except KeyError:
+                    return self._json({"ok": False,
+                                       "message": f"no account called {who!r}"})
+                try:
+                    target = who or world.current().username
+                    ok, charged, reason = world.buy_stop(cost)
+                    if not ok:
+                        return self._json({"ok": False, "message": reason,
+                                           "coins": world.COINS})
+                    # Name it after the closest OSM place within 250 m, if any.
+                    name = (d.get("name") or "").strip()
+                    if not name:
+                        try:
+                            from windstock.geo import pois
+                            best, bestd = None, 250.0
+                            for f in pois.forts():
+                                dy = (f["lat"] - lat) * 111320.0
+                                dx = (f["lng"] - lng) * 111320.0 * max(0.2, _math.cos(_math.radians(lat)))
+                                dm = _math.hypot(dx, dy)
+                                if dm < bestd:
+                                    best, bestd = f["name"], dm
+                            name = best or "Windstock Stop"
+                        except Exception:
+                            name = "Windstock Stop"
+                    fort = PL.add_fort(lat, lng, "stop", name[:40])
+                    price = "free" if charged == 0 else f"{charged}c"
+                    return self._json({"ok": True, "coins": world.COINS,
+                                       "message": f"placed {name!r} at your location "
+                                                  f"({price}) for {target}", "fort": fort})
+                finally:
+                    ctx.__exit__(None, None, None)
+            if p == "/api/raid":
+                from windstock.game import world
+                if not d:                      # plain read
+                    return self._json(world.raid())
+                cfg, sent = world.set_raid(d.get("on"), d.get("pokemon_id"),
+                                           d.get("cp"), d.get("trainer"))
+                who = DEX[cfg["pokemon_id"]] if cfg["pokemon_id"] < len(DEX) else "?"
+                msg = (f"Raid ON — {who} CP{cfg['cp']} is now defending every gym"
+                       + (f"; {sent} defender(s) sent home" if sent else "")
+                       if cfg["on"] else
+                       "Raid off — gyms are back to normal and empty")
+                return self._json(dict(cfg, message=msg))
+            if p == "/api/accounts":
+                from windstock.game import world
+                return self._json({"accounts": world.account_names()})
+            if p == "/api/biome":
+                return self._json(_biome_at(d))
+            if p == "/api/procedural":
+                return self._json(PL.set_procedural(d.get("on", True), d.get("what", "both")))
+            if p == "/api/save":
+                # Live event config (the Events panel + the spawn-source toggle).
+                # EV.save() validates and merges, so only the fields actually sent
+                # are changed -- omitting spawn_mode leaves the current one alone.
+                allowed = ("event_name", "spawn_density", "species_mode",
+                           "species_list", "single_species", "min_cp", "max_cp",                               "spawn_mode", "force_biome", "shiny_rate",
+                           "allow_overcap")
+                return self._json(EV.save({k: d[k] for k in allowed if k in d}))
+            if p == "/api/logs/clear":
+                from windstock.cli import logfile
+                return self._json({"ok": logfile.clear_log()})
+            if p == "/api/loot":
+                # PokeStop loot table editor: rows of [item_id, name, chance %,
+                # min, max], plus the per-spin floor/ceiling. Saved into
+                # settings.json (hot-reloaded) and echoed back after sanitising.
+                from windstock.config import settings as CFG
+                from windstock.game import protocol
+                rows = d.get("rows")
+                if not isinstance(rows, list):
+                    return self._json({"ok": False, "message": "no rows sent"})
+                clean = []
+                for r in rows:
+                    try:
+                        if not isinstance(r, (list, tuple)) or len(r) < 5:
+                            continue
+                        iid = int(r[0])
+                        if iid <= 0:
+                            continue
+                        clean.append([iid, str(r[1])[:24],
+                                      max(0, min(100, int(r[2]))),
+                                      max(1, int(r[3])), 0])
+                        clean[-1][4] = max(clean[-1][3], int(r[4]))
+                    except (TypeError, ValueError):
+                        continue
+                if not clean:
+                    return self._json({"ok": False,
+                                       "message": "every row was invalid -- nothing saved"})
+                try:
+                    lo = max(0, int(d.get("min_items", protocol.LOOT_MIN_ITEMS)))
+                    hi = max(1, int(d.get("max_items", protocol.LOOT_MAX_ITEMS)))
+                except (TypeError, ValueError):
+                    lo, hi = protocol.LOOT_MIN_ITEMS, protocol.LOOT_MAX_ITEMS
+                CFG.set("pokestops", "loot_table", clean)
+                CFG.set("pokestops", "min_items_per_spin", lo)
+                CFG.set("pokestops", "max_items_per_spin", hi)
+                return self._json({"ok": True,
+                                   "message": f"loot table saved ({len(clean)} items, "
+                                              f"{lo}-{hi} per spin)"})
+            if p == "/api/preset":
+                m = EV.apply_preset(d.get("name", ""))
+                return self._json(m if m else {"error": "unknown preset"},
+                                  200 if m else 400)
+            if p == "/api/ring":
+                # furnish a whole neighbourhood in one click: a ring of PokeStops
+                # (plus an optional Gym) around a centre point
+                import math
+                lat = float(d.get("lat", 0.0)); lng = float(d.get("lng", 0.0))
+                n = max(1, min(24, int(d.get("count", 8))))
+                r_m = max(10.0, min(500.0, float(d.get("radius_m", 60))))
+                gym = bool(d.get("gym", True))
+                made = []
+                for i in range(n):
+                    a = 2 * math.pi * i / n
+                    dlat = (r_m * math.cos(a)) / 111320.0
+                    dlng = (r_m * math.sin(a)) / (111320.0 * max(0.2, math.cos(math.radians(lat))))
+                    made.append(PL.add_fort(lat + dlat, lng + dlng, "stop", f"Ring Stop {i+1}"))
+                if gym:
+                    made.append(PL.add_fort(lat, lng, "gym", "Home Gym"))
+                return self._json({"placed": len(made)})
+        except Exception as e:
+            return self._json({"error": str(e)}, 400)
+        self._send(404, "text/plain", "not found")
+
+
+def serve(port=8080, host="127.0.0.1"):
+    ThreadingHTTPServer((host, port), _Handler).serve_forever()
+
+
+def start(port=8080, host="127.0.0.1"):
+    t = threading.Thread(target=serve, kwargs={"port": port, "host": host}, daemon=True)
+    t.start()
+    return t

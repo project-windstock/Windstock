@@ -13,6 +13,12 @@ Everything (DNS redirector + game server) now runs from a **single** process.
 - Local: `py run.py`  (or double-click `start.bat`)
 - Remote: `py run.py <public-ip>`
 
+The launcher lives in `run.py`; the server itself is the `windstock/` package.
+Once running, its console takes World Manager slash commands (`/help`). Wild
+spawns follow `cpdata.json` by default, flavoured by the OpenStreetMap biome you
+are standing in (`biomes.json`) — `/default` re-enables that and `/default off`
+switches back to the classic biome/rarity spawner.
+
 The launcher prints something like:
 ```
 Point the phone's Wi-Fi DNS at:   192.168.111.6

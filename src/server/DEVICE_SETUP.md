@@ -10,17 +10,16 @@ patched APK** via frida-gadget — no root required.
 | Item | What it is |
 |------|-----------|
 | `pogo-0.29.0.objection.apk` | The game, repackaged with frida-gadget + our hook embedded + re-signed. Install **this**, not the original. |
-| `server/dns_redirect.py` | DNS server: resolves the Niantic/PTC hosts to this PC, forwards the rest. |
-| `server/server.py` | The game server (fake PTC login + RPC). |
+| `server/windstock/net/dns_redirect.py` | DNS server: resolves the Niantic/PTC hosts to this PC, forwards the rest. |
+| `server/windstock/net/server.py` | The game server (fake PTC login + RPC). |
 | `server/certs/ca.crt` | The CA to install on the phone (user cert). |
 
-## On the PC (start these; both need Administrator for ports 53/443)
+## On the PC (one launcher; needs Administrator for ports 53/443)
 
 ```powershell
-# terminal 1 - game server on :443
-cd work\server ; py server.py
-# terminal 2 - DNS redirector on :53
-cd work\server ; py dns_redirect.py     # prints the LAN IP to use, e.g. 192.168.111.6
+# runs the game server (:443), the DNS redirector (:53) and the bridges together,
+# and prints the LAN IP to use, e.g. 192.168.111.6
+cd work\server ; py run.py
 ```
 Note the **LAN IP** it prints — call it `PC_IP`. The phone must be on the **same Wi-Fi**.
 

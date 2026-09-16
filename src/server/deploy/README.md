@@ -74,13 +74,13 @@ To push code changes later: re-run `upload.sh`, then
 ## Notes / gotchas
 
 - **An open UDP/53 resolver on a public IP can be abused** (DNS amplification).
-  `dns_redirect.py` only answers with your redirect IP, so it's low-risk, but
+  `windstock/net/dns_redirect.py` only answers with your redirect IP, so it's low-risk, but
   if you want to be tidy, restrict the 53 ingress rule to your players' IPs
   instead of `0.0.0.0/0`.
 - **Port 53 bind fails?** Ubuntu's `systemd-resolved` can hold it. The last
   section of `setup-vm.sh` has two commented lines that free it — uncomment and
   re-run.
-- **The World Manager** (`admin.py`, port 8080) stays bound to localhost and is
+- **The World Manager** (`windstock/web/admin.py`, port 8080) stays bound to localhost and is
   NOT exposed. To reach it, SSH-tunnel:
   `ssh -i key -L 8080:127.0.0.1:8080 ubuntu@YOUR_PUBLIC_IP` then open
   `http://127.0.0.1:8080` locally.

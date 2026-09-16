@@ -70,7 +70,7 @@ Lists** → *Default Security List* → **Add Ingress Rules**:
 Leave "Stateless" unchecked on both. Port 22 is already open by default.
 
 > An open UDP/53 resolver on a public IP can be abused for DNS amplification.
-> `dns_redirect.py` only ever answers with your redirect IP, so the reflection
+> `windstock/net/dns_redirect.py` only ever answers with your redirect IP, so the reflection
 > gain is tiny — but if you know your players' IPs, put those in the Source
 > field instead of `0.0.0.0/0`.
 
@@ -195,7 +195,7 @@ sudo systemctl stop pogo-server
 Pushing code changes: re-run `upload.sh` from your PC, then restart the
 service. No rebuild — this deploys the Python source, not the `.exe`.
 
-### World Manager (admin.py, port 8080)
+### World Manager (windstock/web/admin.py, port 8080)
 Deliberately bound to localhost and **not** exposed. Reach it through an SSH
 tunnel:
 
@@ -230,7 +230,7 @@ One VM with a default boot volume is nowhere near any of these.
 
 ## Before you invite people
 
-Untested: how `admin.py` and the player-state files behave with several
+Untested: how `windstock/web/admin.py` and the player-state files behave with several
 accounts hitting them at once. Pokémon uids must be globally unique because the
 client keys on them — worth confirming that holds across concurrent players in
 a controlled two-phone test before a group session, not during one.
