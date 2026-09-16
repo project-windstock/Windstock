@@ -200,6 +200,10 @@ class Player:
         # vanishes from THEIR map only -- other phones still see the shared spawn.
         # {encounter_id: expiry_ms}, transient (not saved; re-rolls with the world).
         self.DESPAWNED = {}
+        # Daily catch/spin streaks: {"catch_day": "2026-09-15", "catch_days": 3, ...}.
+        # A day with at least one catch (or spin) keeps that streak alive; missing a day
+        # starts it over, exactly like the real game's daily bonus.
+        self.STREAK = {"catch_day": "", "catch_days": 0, "spin_day": "", "spin_days": 0}
         self.BERRIES = {}        # encounter_id -> capture multiplier in effect
         self.PW = ""             # "salt$hash"; empty until the account is claimed
         self.APPLIED = []        # active Lucky Egg / Incense: {item, applied_ms, expires_ms}
@@ -241,6 +245,7 @@ class Player:
                 "tutorial": list(self.TUTORIAL), "codename": self.CODENAME,
                 "free_stop_used": self.FREE_STOP_USED,
                 "last_defender_bonus": self.LAST_DEFENDER_BONUS,
+                "streak": self.STREAK,
                 "eggs": self.EGGS, "incubators": self.INCUBATORS,
                 "hatched": self.HATCHED, "action_log": self.ACTION_LOG,
                 "created_ms": self.CREATED_MS,
@@ -376,6 +381,9 @@ class Player:
         if isinstance(av, dict):
             self.AVATAR = {str(k): int(v) for k, v in av.items()
                            if str(v).lstrip("-").isdigit()}
+        st = d.get("streak")
+        if isinstance(st, dict):
+            self.STREAK.update({k: st.get(k, self.STREAK[k]) for k in self.STREAK})
         self.CLAIMED_LEVELS = [int(x) for x in (d.get("claimed_levels") or [])
                                if str(x).lstrip("-").isdigit()]
         self.LEVEL = level_for_xp(self.XP)
@@ -564,6 +572,10 @@ def spin_cooldown(fort_id):
 RAID = {"on": False, "pokemon_id": 150, "cp": 3000, "trainer": "raid"}
 RAID_FILE = os.path.join(HERE, "raid.json")
 BONUS_SPAWNS = {}                  # username -> [ {eid,pid,cp,lat,lng,expires_ms} ]
+# Multiplayer raids: ONE shared HP pool per gym's boss, hit by every trainer.
+# fort_id -> {key, hp, max, down_until, damage: {username: total}}
+RAID_BOSSES = {}
+PLAYER_LOC = {}                    # username -> (lat, lng), last reported position
 _MAX_SPAWNS = 4000
 
 
@@ -1257,6 +1269,14 @@ def add_fort_modifier(fort_id, item_id, minutes, by):
     now = int(time.time() * 1000)
     with _lock:
         cur = FORT_MODIFIERS.get(fort_id)
+        if (cur and cur.get("expires_ms", 0) > now
+                and _cfg.get("boosts", "lure_stacks", cast=bool)):
+            # Lure party: add this lure's time to what's already burning.
+            cap = now + int(_cfg.get("boosts", "lure_max_minutes", cast=float) * 60000)
+            cur["expires_ms"] = min(cap, int(cur["expires_ms"]) + int(minutes * 60000))
+            FORT_MODIFIERS[fort_id] = cur
+            save_lures()
+            return 1, dict(cur)
         if cur and cur.get("expires_ms", 0) > now:
             return 2, None
     if not take_item(int(item_id), 1):
@@ -1551,6 +1571,7 @@ def set_raid(on=None, pokemon_id=None, cp=None, trainer=None):
             RAID["cp"] = max(10, min(9999, int(cp)))
         if trainer is not None:
             RAID["trainer"] = str(trainer)[:16] or "raid"
+        RAID_BOSSES.clear()            # any change starts every boss fresh at full HP
         if RAID["on"]:
             sent_home = sum(len(v) for v in GYMS.values())
             GYMS.clear()
@@ -1563,6 +1584,111 @@ def set_raid(on=None, pokemon_id=None, cp=None, trainer=None):
 def raid():
     with _lock:
         return dict(RAID)
+
+
+def raid_boss_state(fort_id, max_hp, now_ms):
+    """The shared HP of one gym's raid boss -- every trainer fights the same pool.
+    Returns {hp, max, down_until}. A knocked-out boss comes back at full HP once its
+    respawn time has passed, or straight away if the boss/CP was changed."""
+    key = (int(RAID["pokemon_id"]), int(RAID["cp"]), int(max_hp))
+    with _lock:
+        s = RAID_BOSSES.get(fort_id)
+        if s is None or s["key"] != key or (s["down_until"] and now_ms >= s["down_until"]):
+            s = {"key": key, "hp": int(max_hp), "max": int(max_hp),
+                 "down_until": 0, "damage": {}}
+            RAID_BOSSES[fort_id] = s
+        return {"hp": s["hp"], "max": s["max"], "down_until": s["down_until"]}
+
+
+def raid_hit(fort_id, username, damage, now_ms, respawn_ms):
+    """Apply one trainer's damage to a gym's shared boss. Returns
+    (hp_left, felled_now, {username: damage}). felled_now is True only for the
+    request that lands the final blow, so the group is rewarded exactly once."""
+    with _lock:
+        s = RAID_BOSSES.get(fort_id)
+        if s is None:
+            return 0, False, {}
+        if s["hp"] <= 0:
+            return 0, False, dict(s["damage"])
+        # Only the HP the boss actually had left counts -- an overkill finishing blow
+        # mustn't outscore the trainers who did the real work.
+        d = min(max(0, int(damage)), s["hp"])
+        if d:
+            s["damage"][username] = s["damage"].get(username, 0) + d
+            s["hp"] = max(0, s["hp"] - d)
+        if s["hp"] == 0:
+            s["down_until"] = int(now_ms) + int(respawn_ms)
+            return 0, True, dict(s["damage"])
+        return s["hp"], False, dict(s["damage"])
+
+
+def raid_bosses():
+    """Live boss HP per gym, for the World Manager."""
+    with _lock:
+        return {f: {"hp": s["hp"], "max": s["max"], "down_until": s["down_until"],
+                    "trainers": len(s["damage"])} for f, s in RAID_BOSSES.items()}
+
+
+def set_player_location(lat, lng, username=None):
+    """Remember where each trainer is, so a raid drop lands at THEIR feet (the old
+    single last-location was whoever happened to send the latest request)."""
+    if not (abs(lat) > 1e-6 or abs(lng) > 1e-6):
+        return
+    with _lock:
+        PLAYER_LOC[username or current().username] = (float(lat), float(lng))
+
+
+def player_location(username):
+    with _lock:
+        return PLAYER_LOC.get(username)
+
+
+def _day_key(offset=0):
+    """Today's date where the SERVER is, as YYYY-MM-DD (offset in days)."""
+    return time.strftime("%Y-%m-%d", time.localtime(time.time() + offset * 86400))
+
+
+def daily_streak(kind):
+    """First catch ('catch') or stop spin ('spin') of the day.
+
+    Returns (xp, dust, items, streak_days, seventh). Items are added to the bag here;
+    the XP and stardust are RETURNED rather than credited, so the caller can put them on
+    the catch/spin screen and bank them once. Later calls the same day return zeros.
+    """
+    if not _cfg.get("daily", "enabled", cast=bool):
+        return 0, 0, [], 0, False
+    p = current()
+    today, yesterday = _day_key(), _day_key(-1)
+    day_key, count_key = kind + "_day", kind + "_days"
+    with _lock:
+        st = p.STREAK
+        if st.get(day_key) == today:
+            return 0, 0, [], int(st.get(count_key, 0)), False
+        st[count_key] = int(st.get(count_key, 0)) + 1 if st.get(day_key) == yesterday else 1
+        st[day_key] = today
+        days = int(st[count_key])
+    seventh = (days % 7 == 0)
+    suffix = "7" if seventh else ""
+    xp = int(_cfg.get("daily", f"{kind}{suffix}_xp", cast=int))
+    dust = int(_cfg.get("daily", f"{kind}{suffix}_dust", cast=int))
+    items = []
+    if seventh:
+        for iid, cnt in (_cfg.get("daily", f"{kind}7_items") or {}).items():
+            try:
+                items.append((int(iid), int(cnt)))
+            except (TypeError, ValueError):
+                pass
+    for iid, cnt in items:
+        add_item(iid, cnt)
+    p.save()
+    return xp, dust, items, days, seventh
+
+
+def streaks():
+    """Both streaks, for the World Manager."""
+    p = current()
+    with _lock:
+        return dict(p.STREAK)
 
 
 def add_bonus_spawn(username, eid, pid, cp, lat, lng, expires_ms):

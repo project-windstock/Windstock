@@ -116,6 +116,16 @@ _ITEM_TYPE_NAME = {1: "ITEM_POKE_BALL", 301: "ITEM_LUCKY_EGG",
                    1002: "ITEM_ITEM_STORAGE_UPGRADE"}
 
 
+def shop_price(price):
+    """The price after settings.json -> shop.price_multiplier (hot-reloaded)."""
+    try:
+        import settings as _cfg
+        m = float(_cfg.get("shop", "price_multiplier", cast=float))
+    except Exception:
+        m = 1.0
+    return max(0, int(round(int(price) * m)))
+
+
 def _store_item_bytes(sku, iid, cnt, price, sort):
     """One StoreItem of the Shop list."""
     import pb
@@ -151,7 +161,7 @@ def build_platform_shop(coins, stardust):
     inner = pb.Writer().uint(1, 1)                        # unknown1 = 1 (success)
     for sort, entry in enumerate(CATALOGUE, 1):
         sku, _label, iid, cnt, price, _icon, _was = entry
-        inner.message(2, _store_item_bytes(sku, iid, cnt, price, sort))
+        inner.message(2, _store_item_bytes(sku, iid, cnt, shop_price(price), sort))
     inner.message(3, _currency("POKECOIN", coins))        # player_currencies
     inner.message(3, _currency("STARDUST", stardust))
 
@@ -179,6 +189,7 @@ def purchase(item_id):
         return ok, message
     if world.room_in_bag() < cnt:
         return False, f"bag full ({world.bag_count()}/{world.MAX_ITEMS})"
+    price = shop_price(price)
     if world.spend_coins(price):
         total = world.add_item(iid, cnt)
         return True, f"got {label} (now {total})"
@@ -459,6 +470,7 @@ def handle(method, path, query, headers, body, log):
         if not entry or who not in names:
             return _json({"ok": False, "message": "That didn't work."})
         _sku, label, iid, cnt, price, _icon, _was = entry
+        price = shop_price(price)
         with world.acting_as(who):
             if iid == 0:                                   # a storage upgrade
                 ok, message, _new = world.buy_storage(_storage_kind(_sku))

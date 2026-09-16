@@ -35,6 +35,24 @@ _dump_budget = [8]                 # (verbose only) dump the first N raw envelop
 _last_loc = [0.0, 0.0]            # last non-zero player location we've seen
 _last_logged_loc = [0.0, 0.0]     # last location we actually PRINTED (de-spam)
 _last_user = [None]               # last trainer to make a request (for /shop)
+# Which trainer each phone (by IP) last played as. The tweak's raid screens call
+# /raid/... without the game's login, so this is how raidlobby.py knows who's asking.
+import threading as _threading
+_req_ip = _threading.local()      # set by server.py for the request being handled
+_ip_user = {}
+
+
+def user_for_ip(ip):
+    return _ip_user.get(ip) if ip else None
+
+
+# The gym each trainer last opened (GET_GYM_DETAILS / START_GYM_BATTLE). The raid screens
+# ask for "my current gym" instead of reading the fort id out of game memory.
+_user_gym = {}
+
+
+def gym_for_user(user):
+    return _user_gym.get(user) if user else None
 
 
 def _moved_far(a, b, metres=15.0):
@@ -129,6 +147,8 @@ def _build_returns(reqs, username, log):
             log(f"      -> FORT_DETAILS {fid!r}")
         elif rtype == P.RT.GET_GYM_DETAILS:
             fid, glat, glng = P.parse_gym_details(msg)
+            if fid:
+                _user_gym[username] = fid
             import world
             returns.append(P.build_gym_details_response(
                 fid, glat or _last_loc[0], glng or _last_loc[1], int(time.time() * 1000)))
@@ -142,6 +162,8 @@ def _build_returns(reqs, username, log):
                 f"-> {len(world.gym_members(fid))} at gym")
         elif rtype == P.RT.START_GYM_BATTLE:
             gid, atk_ids, def_id = P.parse_start_gym_battle(msg)
+            if gid:
+                _user_gym[username] = gid
             r = P.build_start_gym_battle_response(gid, atk_ids, def_id,
                                                   int(time.time() * 1000))
             returns.append(r)
@@ -471,6 +493,8 @@ def _build_returns(reqs, username, log):
             ulat, ulng = P.parse_player_update(msg)
             if ulat or ulng:
                 _last_loc[0], _last_loc[1] = ulat, ulng
+                import world as _wl
+                _wl.set_player_location(ulat, ulng, username)
             # Nearby Pokemon/forts already come from GET_MAP_OBJECTS; an empty
             # PlayerUpdateOutProto means "nothing extra".
             returns.append(b"")
@@ -518,6 +542,9 @@ def handle(method, path, query, headers, body, log):
     request_id, reqs, fields = P.parse_request_envelope(body)
     username = P.resolve_username(fields) or "Trainer"
     _last_user[0] = username
+    _ip = getattr(_req_ip, "value", None)
+    if _ip:
+        _ip_user[_ip] = username
 
     # A blank line + this header frame each request batch, so the log reads as a
     # sequence of "the game asked for X, we answered Y" rather than one endless
@@ -533,6 +560,7 @@ def handle(method, path, query, headers, body, log):
         try:
             import world as _w
             _w.use(username)
+            _w.set_player_location(ll[0], ll[1], username)
             _w.add_distance(ll[0], ll[1])
         except Exception:
             pass

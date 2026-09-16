@@ -1,0 +1,1409 @@
+{
+ "_source": "clip names scanned from the 0.29 iOS client's Unity assets",
+ "groups": [
+  {
+   "id": "music",
+   "name": "Music",
+   "clips": [
+    {
+     "clip": "walk",
+     "label": "Map theme"
+    },
+    {
+     "clip": "walk_night",
+     "label": "Map theme at night (packs only)"
+    },
+    {
+     "clip": "106_title",
+     "label": "Title screen"
+    },
+    {
+     "clip": "107_professor",
+     "label": "Professor Willow intro"
+    },
+    {
+     "clip": "102_encounter",
+     "label": "Wild encounter"
+    },
+    {
+     "clip": "200_ME_gotcha",
+     "label": "Catch jingle"
+    },
+    {
+     "clip": "101_gotcha",
+     "label": "After a catch"
+    },
+    {
+     "clip": "302_ME_levelup",
+     "label": "Level up jingle"
+    },
+    {
+     "clip": "108_evolution",
+     "label": "Evolution"
+    },
+    {
+     "clip": "303_ME_evolution",
+     "label": "Evolution jingle"
+    },
+    {
+     "clip": "before_the_fight",
+     "label": "Gym"
+    },
+    {
+     "clip": "battle",
+     "label": "Gym battle"
+    },
+    {
+     "clip": "002_old",
+     "label": "Old theme"
+    }
+   ]
+  },
+  {
+   "id": "catch",
+   "name": "Catching",
+   "clips": [
+    {
+     "clip": "se_go_ball_bowa1",
+     "label": "Ball bowa1"
+    },
+    {
+     "clip": "se_go_ball_bowa2",
+     "label": "Ball bowa2"
+    },
+    {
+     "clip": "se_go_ball_gotcha",
+     "label": "Ball gotcha"
+    },
+    {
+     "clip": "se_go_ball_grab",
+     "label": "Ball grab"
+    },
+    {
+     "clip": "se_go_ball_ground",
+     "label": "Ball ground"
+    },
+    {
+     "clip": "se_go_ball_mistake_ground",
+     "label": "Ball mistake ground"
+    },
+    {
+     "clip": "se_go_ball_mistake_hit_pokemon",
+     "label": "Ball mistake hit pokemon"
+    },
+    {
+     "clip": "se_go_ball_out",
+     "label": "Ball out"
+    },
+    {
+     "clip": "se_go_ball_take_in",
+     "label": "Ball take in"
+    },
+    {
+     "clip": "se_go_ball_target",
+     "label": "Ball target"
+    },
+    {
+     "clip": "se_go_ball_throw",
+     "label": "Ball throw"
+    },
+    {
+     "clip": "se_go_pokemon_appear",
+     "label": "Pokemon appear"
+    },
+    {
+     "clip": "se_go_run_button",
+     "label": "Run button"
+    },
+    {
+     "clip": "se_go_spotlight",
+     "label": "Spotlight"
+    }
+   ]
+  },
+  {
+   "id": "map",
+   "name": "Map",
+   "clips": [
+    {
+     "clip": "se_go_main_ball",
+     "label": "Main ball"
+    },
+    {
+     "clip": "se_go_main_ball_close",
+     "label": "Main ball close"
+    },
+    {
+     "clip": "se_go_main_ball_item",
+     "label": "Main ball item"
+    },
+    {
+     "clip": "se_go_main_ball_pokedex",
+     "label": "Main ball pokedex"
+    },
+    {
+     "clip": "se_go_main_ball_pokemon",
+     "label": "Main ball pokemon"
+    },
+    {
+     "clip": "se_go_main_ball_shop",
+     "label": "Main ball shop"
+    },
+    {
+     "clip": "se_go_main_compass",
+     "label": "Main compass"
+    },
+    {
+     "clip": "se_go_main_nearby",
+     "label": "Main nearby"
+    },
+    {
+     "clip": "se_go_main_nearby_marking",
+     "label": "Main nearby marking"
+    },
+    {
+     "clip": "se_go_main_xp",
+     "label": "Main xp"
+    },
+    {
+     "clip": "se_go_real_button",
+     "label": "Real button"
+    }
+   ]
+  },
+  {
+   "id": "stops",
+   "name": "PokeStops",
+   "clips": [
+    {
+     "clip": "se_go_pokestop_close",
+     "label": "Pokestop close"
+    },
+    {
+     "clip": "se_go_pokestop_close_box",
+     "label": "Pokestop close box"
+    },
+    {
+     "clip": "se_go_pokestop_item",
+     "label": "Pokestop item"
+    },
+    {
+     "clip": "se_go_pokestop_item_catch",
+     "label": "Pokestop item catch"
+    },
+    {
+     "clip": "se_go_pokestop_open",
+     "label": "Pokestop open"
+    },
+    {
+     "clip": "se_go_pokestop_zoom_in",
+     "label": "Pokestop zoom in"
+    }
+   ]
+  },
+  {
+   "id": "eggs",
+   "name": "Eggs",
+   "clips": [
+    {
+     "clip": "se_go_egg_crack",
+     "label": "Egg crack"
+    },
+    {
+     "clip": "se_go_egg_last_crack",
+     "label": "Egg last crack"
+    }
+   ]
+  },
+  {
+   "id": "menus",
+   "name": "Menus & system",
+   "clips": [
+    {
+     "clip": "SEQ_SE_CLOSE1",
+     "label": "CLOSE1"
+    },
+    {
+     "clip": "SEQ_SE_COMPLETE1",
+     "label": "COMPLETE1"
+    },
+    {
+     "clip": "SEQ_SE_ICON",
+     "label": "ICON"
+    },
+    {
+     "clip": "SEQ_SE_OPEN2",
+     "label": "OPEN2"
+    },
+    {
+     "clip": "SEQ_SE_SYS_002",
+     "label": "SYS 002"
+    },
+    {
+     "clip": "SEQ_SE_SYS_010",
+     "label": "SYS 010"
+    },
+    {
+     "clip": "SEQ_SE_SYS_024",
+     "label": "SYS 024"
+    },
+    {
+     "clip": "SEQ_SE_SYS_066",
+     "label": "SYS 066"
+    },
+    {
+     "clip": "SEQ_SE_SYS_080",
+     "label": "SYS 080"
+    },
+    {
+     "clip": "SEQ_SE_WAZAWASURE",
+     "label": "WAZAWASURE"
+    },
+    {
+     "clip": "se_go_sys_cancel",
+     "label": "Sys cancel"
+    },
+    {
+     "clip": "se_go_sys_message",
+     "label": "Sys message"
+    },
+    {
+     "clip": "se_go_sys_pi",
+     "label": "Sys pi"
+    },
+    {
+     "clip": "se_go_sys_select",
+     "label": "Sys select"
+    },
+    {
+     "clip": "se_go_sys_tap",
+     "label": "Sys tap"
+    },
+    {
+     "clip": "se_go_type_select",
+     "label": "Type select"
+    }
+   ]
+  },
+  {
+   "id": "cries",
+   "name": "Pokemon cries",
+   "clips": [
+    {
+     "clip": "pv001",
+     "label": "#001 Bulbasaur"
+    },
+    {
+     "clip": "pv002",
+     "label": "#002 Ivysaur"
+    },
+    {
+     "clip": "pv003",
+     "label": "#003 Venusaur"
+    },
+    {
+     "clip": "pv004",
+     "label": "#004 Charmander"
+    },
+    {
+     "clip": "pv005",
+     "label": "#005 Charmeleon"
+    },
+    {
+     "clip": "pv006",
+     "label": "#006 Charizard"
+    },
+    {
+     "clip": "pv007",
+     "label": "#007 Squirtle"
+    },
+    {
+     "clip": "pv008",
+     "label": "#008 Wartortle"
+    },
+    {
+     "clip": "pv009",
+     "label": "#009 Blastoise"
+    },
+    {
+     "clip": "pv010",
+     "label": "#010 Caterpie"
+    },
+    {
+     "clip": "pv011",
+     "label": "#011 Metapod"
+    },
+    {
+     "clip": "pv012",
+     "label": "#012 Butterfree"
+    },
+    {
+     "clip": "pv013",
+     "label": "#013 Weedle"
+    },
+    {
+     "clip": "pv014",
+     "label": "#014 Kakuna"
+    },
+    {
+     "clip": "pv015",
+     "label": "#015 Beedrill"
+    },
+    {
+     "clip": "pv016",
+     "label": "#016 Pidgey"
+    },
+    {
+     "clip": "pv017",
+     "label": "#017 Pidgeotto"
+    },
+    {
+     "clip": "pv018",
+     "label": "#018 Pidgeot"
+    },
+    {
+     "clip": "pv019",
+     "label": "#019 Rattata"
+    },
+    {
+     "clip": "pv020",
+     "label": "#020 Raticate"
+    },
+    {
+     "clip": "pv021",
+     "label": "#021 Spearow"
+    },
+    {
+     "clip": "pv022",
+     "label": "#022 Fearow"
+    },
+    {
+     "clip": "pv023",
+     "label": "#023 Ekans"
+    },
+    {
+     "clip": "pv024",
+     "label": "#024 Arbok"
+    },
+    {
+     "clip": "pv025",
+     "label": "#025 Pikachu"
+    },
+    {
+     "clip": "pv026",
+     "label": "#026 Raichu"
+    },
+    {
+     "clip": "pv027",
+     "label": "#027 Sandshrew"
+    },
+    {
+     "clip": "pv028",
+     "label": "#028 Sandslash"
+    },
+    {
+     "clip": "pv029",
+     "label": "#029 NidoranF"
+    },
+    {
+     "clip": "pv030",
+     "label": "#030 Nidorina"
+    },
+    {
+     "clip": "pv031",
+     "label": "#031 Nidoqueen"
+    },
+    {
+     "clip": "pv032",
+     "label": "#032 NidoranM"
+    },
+    {
+     "clip": "pv033",
+     "label": "#033 Nidorino"
+    },
+    {
+     "clip": "pv034",
+     "label": "#034 Nidoking"
+    },
+    {
+     "clip": "pv035",
+     "label": "#035 Clefairy"
+    },
+    {
+     "clip": "pv036",
+     "label": "#036 Clefable"
+    },
+    {
+     "clip": "pv037",
+     "label": "#037 Vulpix"
+    },
+    {
+     "clip": "pv038",
+     "label": "#038 Ninetales"
+    },
+    {
+     "clip": "pv039",
+     "label": "#039 Jigglypuff"
+    },
+    {
+     "clip": "pv040",
+     "label": "#040 Wigglytuff"
+    },
+    {
+     "clip": "pv041",
+     "label": "#041 Zubat"
+    },
+    {
+     "clip": "pv042",
+     "label": "#042 Golbat"
+    },
+    {
+     "clip": "pv043",
+     "label": "#043 Oddish"
+    },
+    {
+     "clip": "pv044",
+     "label": "#044 Gloom"
+    },
+    {
+     "clip": "pv045",
+     "label": "#045 Vileplume"
+    },
+    {
+     "clip": "pv046",
+     "label": "#046 Paras"
+    },
+    {
+     "clip": "pv047",
+     "label": "#047 Parasect"
+    },
+    {
+     "clip": "pv048",
+     "label": "#048 Venonat"
+    },
+    {
+     "clip": "pv049",
+     "label": "#049 Venomoth"
+    },
+    {
+     "clip": "pv050",
+     "label": "#050 Diglett"
+    },
+    {
+     "clip": "pv051",
+     "label": "#051 Dugtrio"
+    },
+    {
+     "clip": "pv052",
+     "label": "#052 Meowth"
+    },
+    {
+     "clip": "pv053",
+     "label": "#053 Persian"
+    },
+    {
+     "clip": "pv054",
+     "label": "#054 Psyduck"
+    },
+    {
+     "clip": "pv055",
+     "label": "#055 Golduck"
+    },
+    {
+     "clip": "pv056",
+     "label": "#056 Mankey"
+    },
+    {
+     "clip": "pv057",
+     "label": "#057 Primeape"
+    },
+    {
+     "clip": "pv058",
+     "label": "#058 Growlithe"
+    },
+    {
+     "clip": "pv059",
+     "label": "#059 Arcanine"
+    },
+    {
+     "clip": "pv060",
+     "label": "#060 Poliwag"
+    },
+    {
+     "clip": "pv061",
+     "label": "#061 Poliwhirl"
+    },
+    {
+     "clip": "pv062",
+     "label": "#062 Poliwrath"
+    },
+    {
+     "clip": "pv063",
+     "label": "#063 Abra"
+    },
+    {
+     "clip": "pv064",
+     "label": "#064 Kadabra"
+    },
+    {
+     "clip": "pv065",
+     "label": "#065 Alakazam"
+    },
+    {
+     "clip": "pv066",
+     "label": "#066 Machop"
+    },
+    {
+     "clip": "pv067",
+     "label": "#067 Machoke"
+    },
+    {
+     "clip": "pv068",
+     "label": "#068 Machamp"
+    },
+    {
+     "clip": "pv069",
+     "label": "#069 Bellsprout"
+    },
+    {
+     "clip": "pv070",
+     "label": "#070 Weepinbell"
+    },
+    {
+     "clip": "pv071",
+     "label": "#071 Victreebel"
+    },
+    {
+     "clip": "pv072",
+     "label": "#072 Tentacool"
+    },
+    {
+     "clip": "pv073",
+     "label": "#073 Tentacruel"
+    },
+    {
+     "clip": "pv074",
+     "label": "#074 Geodude"
+    },
+    {
+     "clip": "pv075",
+     "label": "#075 Graveler"
+    },
+    {
+     "clip": "pv076",
+     "label": "#076 Golem"
+    },
+    {
+     "clip": "pv077",
+     "label": "#077 Ponyta"
+    },
+    {
+     "clip": "pv078",
+     "label": "#078 Rapidash"
+    },
+    {
+     "clip": "pv079",
+     "label": "#079 Slowpoke"
+    },
+    {
+     "clip": "pv080",
+     "label": "#080 Slowbro"
+    },
+    {
+     "clip": "pv081",
+     "label": "#081 Magnemite"
+    },
+    {
+     "clip": "pv082",
+     "label": "#082 Magneton"
+    },
+    {
+     "clip": "pv083",
+     "label": "#083 Farfetchd"
+    },
+    {
+     "clip": "pv084",
+     "label": "#084 Doduo"
+    },
+    {
+     "clip": "pv085",
+     "label": "#085 Dodrio"
+    },
+    {
+     "clip": "pv086",
+     "label": "#086 Seel"
+    },
+    {
+     "clip": "pv087",
+     "label": "#087 Dewgong"
+    },
+    {
+     "clip": "pv088",
+     "label": "#088 Grimer"
+    },
+    {
+     "clip": "pv089",
+     "label": "#089 Muk"
+    },
+    {
+     "clip": "pv090",
+     "label": "#090 Shellder"
+    },
+    {
+     "clip": "pv091",
+     "label": "#091 Cloyster"
+    },
+    {
+     "clip": "pv092",
+     "label": "#092 Gastly"
+    },
+    {
+     "clip": "pv093",
+     "label": "#093 Haunter"
+    },
+    {
+     "clip": "pv094",
+     "label": "#094 Gengar"
+    },
+    {
+     "clip": "pv095",
+     "label": "#095 Onix"
+    },
+    {
+     "clip": "pv096",
+     "label": "#096 Drowzee"
+    },
+    {
+     "clip": "pv097",
+     "label": "#097 Hypno"
+    },
+    {
+     "clip": "pv098",
+     "label": "#098 Krabby"
+    },
+    {
+     "clip": "pv099",
+     "label": "#099 Kingler"
+    },
+    {
+     "clip": "pv100",
+     "label": "#100 Voltorb"
+    },
+    {
+     "clip": "pv101",
+     "label": "#101 Electrode"
+    },
+    {
+     "clip": "pv102",
+     "label": "#102 Exeggcute"
+    },
+    {
+     "clip": "pv103",
+     "label": "#103 Exeggutor"
+    },
+    {
+     "clip": "pv104",
+     "label": "#104 Cubone"
+    },
+    {
+     "clip": "pv105",
+     "label": "#105 Marowak"
+    },
+    {
+     "clip": "pv106",
+     "label": "#106 Hitmonlee"
+    },
+    {
+     "clip": "pv107",
+     "label": "#107 Hitmonchan"
+    },
+    {
+     "clip": "pv108",
+     "label": "#108 Lickitung"
+    },
+    {
+     "clip": "pv109",
+     "label": "#109 Koffing"
+    },
+    {
+     "clip": "pv110",
+     "label": "#110 Weezing"
+    },
+    {
+     "clip": "pv111",
+     "label": "#111 Rhyhorn"
+    },
+    {
+     "clip": "pv112",
+     "label": "#112 Rhydon"
+    },
+    {
+     "clip": "pv113",
+     "label": "#113 Chansey"
+    },
+    {
+     "clip": "pv114",
+     "label": "#114 Tangela"
+    },
+    {
+     "clip": "pv115",
+     "label": "#115 Kangaskhan"
+    },
+    {
+     "clip": "pv116",
+     "label": "#116 Horsea"
+    },
+    {
+     "clip": "pv117",
+     "label": "#117 Seadra"
+    },
+    {
+     "clip": "pv118",
+     "label": "#118 Goldeen"
+    },
+    {
+     "clip": "pv119",
+     "label": "#119 Seaking"
+    },
+    {
+     "clip": "pv120",
+     "label": "#120 Staryu"
+    },
+    {
+     "clip": "pv121",
+     "label": "#121 Starmie"
+    },
+    {
+     "clip": "pv122",
+     "label": "#122 MrMime"
+    },
+    {
+     "clip": "pv123",
+     "label": "#123 Scyther"
+    },
+    {
+     "clip": "pv124",
+     "label": "#124 Jynx"
+    },
+    {
+     "clip": "pv125",
+     "label": "#125 Electabuzz"
+    },
+    {
+     "clip": "pv126",
+     "label": "#126 Magmar"
+    },
+    {
+     "clip": "pv127",
+     "label": "#127 Pinsir"
+    },
+    {
+     "clip": "pv128",
+     "label": "#128 Tauros"
+    },
+    {
+     "clip": "pv129",
+     "label": "#129 Magikarp"
+    },
+    {
+     "clip": "pv130",
+     "label": "#130 Gyarados"
+    },
+    {
+     "clip": "pv131",
+     "label": "#131 Lapras"
+    },
+    {
+     "clip": "pv132",
+     "label": "#132 Ditto"
+    },
+    {
+     "clip": "pv133",
+     "label": "#133 Eevee"
+    },
+    {
+     "clip": "pv134",
+     "label": "#134 Vaporeon"
+    },
+    {
+     "clip": "pv135",
+     "label": "#135 Jolteon"
+    },
+    {
+     "clip": "pv136",
+     "label": "#136 Flareon"
+    },
+    {
+     "clip": "pv137",
+     "label": "#137 Porygon"
+    },
+    {
+     "clip": "pv138",
+     "label": "#138 Omanyte"
+    },
+    {
+     "clip": "pv139",
+     "label": "#139 Omastar"
+    },
+    {
+     "clip": "pv140",
+     "label": "#140 Kabuto"
+    },
+    {
+     "clip": "pv141",
+     "label": "#141 Kabutops"
+    },
+    {
+     "clip": "pv142",
+     "label": "#142 Aerodactyl"
+    },
+    {
+     "clip": "pv143",
+     "label": "#143 Snorlax"
+    },
+    {
+     "clip": "pv144",
+     "label": "#144 Articuno"
+    },
+    {
+     "clip": "pv145",
+     "label": "#145 Zapdos"
+    },
+    {
+     "clip": "pv146",
+     "label": "#146 Moltres"
+    },
+    {
+     "clip": "pv147",
+     "label": "#147 Dratini"
+    },
+    {
+     "clip": "pv148",
+     "label": "#148 Dragonair"
+    },
+    {
+     "clip": "pv149",
+     "label": "#149 Dragonite"
+    },
+    {
+     "clip": "pv150",
+     "label": "#150 Mewtwo"
+    },
+    {
+     "clip": "pv151",
+     "label": "#151 Mew"
+    }
+   ]
+  },
+  {
+   "id": "moves",
+   "name": "Move sounds",
+   "clips": [
+    {
+     "clip": "001-0_pound",
+     "label": "Pound"
+    },
+    {
+     "clip": "002-0_karate_chop",
+     "label": "Karate chop"
+    },
+    {
+     "clip": "007-0_fire_punch",
+     "label": "Fire punch"
+    },
+    {
+     "clip": "008-0_ice_punch",
+     "label": "Ice punch"
+    },
+    {
+     "clip": "009-0_thunder_punch",
+     "label": "Thunder punch"
+    },
+    {
+     "clip": "010-0_scratch",
+     "label": "Scratch"
+    },
+    {
+     "clip": "011-0_vice_grip",
+     "label": "Vice grip"
+    },
+    {
+     "clip": "015-0_cut",
+     "label": "Cut"
+    },
+    {
+     "clip": "017-0_wing_attack",
+     "label": "Wing attack"
+    },
+    {
+     "clip": "022-0_vine_whip",
+     "label": "Vine whip"
+    },
+    {
+     "clip": "023-0_stomp",
+     "label": "Stomp"
+    },
+    {
+     "clip": "030-0_horn_attack",
+     "label": "Horn attack"
+    },
+    {
+     "clip": "033-0_tackle",
+     "label": "Tackle"
+    },
+    {
+     "clip": "034-0_body_slam",
+     "label": "Body slam"
+    },
+    {
+     "clip": "035-0_wrap",
+     "label": "Wrap"
+    },
+    {
+     "clip": "035-1_wrap",
+     "label": "Wrap"
+    },
+    {
+     "clip": "044-0_bite",
+     "label": "Bite"
+    },
+    {
+     "clip": "051-0_acid",
+     "label": "Acid"
+    },
+    {
+     "clip": "052-0_ember",
+     "label": "Ember"
+    },
+    {
+     "clip": "053-0_flamethrower",
+     "label": "Flamethrower"
+    },
+    {
+     "clip": "055-0_water_gun",
+     "label": "Water gun"
+    },
+    {
+     "clip": "056-0_hydro_pump",
+     "label": "Hydro pump"
+    },
+    {
+     "clip": "058-0_ice_beam",
+     "label": "Ice beam"
+    },
+    {
+     "clip": "059-0_blizzard",
+     "label": "Blizzard"
+    },
+    {
+     "clip": "060-0_psybeam",
+     "label": "Psybeam"
+    },
+    {
+     "clip": "061-0_bubble_beam",
+     "label": "Bubble beam"
+    },
+    {
+     "clip": "063-0_hyper_beam",
+     "label": "Hyper beam"
+    },
+    {
+     "clip": "064-0_peck",
+     "label": "Peck"
+    },
+    {
+     "clip": "065-0_drill_peck",
+     "label": "Drill peck"
+    },
+    {
+     "clip": "066-0_submission",
+     "label": "Submission"
+    },
+    {
+     "clip": "067-0_low_kick",
+     "label": "Low kick"
+    },
+    {
+     "clip": "072-0_mega_drain",
+     "label": "Mega drain"
+    },
+    {
+     "clip": "075-0_razor_leaf",
+     "label": "Razor leaf"
+    },
+    {
+     "clip": "076-0_solar_beam",
+     "label": "Solar beam"
+    },
+    {
+     "clip": "076-1_solar_beam",
+     "label": "Solar beam"
+    },
+    {
+     "clip": "084-0_thunder_shock",
+     "label": "Thunder shock"
+    },
+    {
+     "clip": "085-0_thunderbolt",
+     "label": "Thunderbolt"
+    },
+    {
+     "clip": "087-0_thunder",
+     "label": "Thunder"
+    },
+    {
+     "clip": "088-0_rock_throw",
+     "label": "Rock throw"
+    },
+    {
+     "clip": "089-0_earthquake",
+     "label": "Earthquake"
+    },
+    {
+     "clip": "091-0_dig",
+     "label": "Dig"
+    },
+    {
+     "clip": "091-1_dig",
+     "label": "Dig"
+    },
+    {
+     "clip": "094-0_psychic",
+     "label": "Psychic"
+    },
+    {
+     "clip": "098-0_quick_attack",
+     "label": "Quick attack"
+    },
+    {
+     "clip": "122-0_lick",
+     "label": "Lick"
+    },
+    {
+     "clip": "124-0_sludge",
+     "label": "Sludge"
+    },
+    {
+     "clip": "125-0_bone_club",
+     "label": "Bone club"
+    },
+    {
+     "clip": "126-0_fire_blast",
+     "label": "Fire blast"
+    },
+    {
+     "clip": "129-0_swift",
+     "label": "Swift"
+    },
+    {
+     "clip": "150-0_splash",
+     "label": "Splash"
+    },
+    {
+     "clip": "156-0_rest",
+     "label": "Rest"
+    },
+    {
+     "clip": "157-0_rock_slide",
+     "label": "Rock slide"
+    },
+    {
+     "clip": "158-0_hyper_fang",
+     "label": "Hyper fang"
+    },
+    {
+     "clip": "165-0_struggle",
+     "label": "Struggle"
+    },
+    {
+     "clip": "172-0_flame_wheel",
+     "label": "Flame wheel"
+    },
+    {
+     "clip": "188-0_sludge_bomb",
+     "label": "Sludge bomb"
+    },
+    {
+     "clip": "196-0_icy_wind",
+     "label": "Icy wind"
+    },
+    {
+     "clip": "202-0_giga_drain",
+     "label": "Giga drain"
+    },
+    {
+     "clip": "209-0_spark",
+     "label": "Spark"
+    },
+    {
+     "clip": "210-0_fury_cutter",
+     "label": "Fury cutter"
+    },
+    {
+     "clip": "224-0_megahorn",
+     "label": "Megahorn"
+    },
+    {
+     "clip": "225-0_dragon_breath",
+     "label": "Dragon breath"
+    },
+    {
+     "clip": "232-0_metal_claw",
+     "label": "Metal claw"
+    },
+    {
+     "clip": "238-0_cross_chop",
+     "label": "Cross chop"
+    },
+    {
+     "clip": "239-0_twister",
+     "label": "Twister"
+    },
+    {
+     "clip": "246-0_ancient_power",
+     "label": "Ancient power"
+    },
+    {
+     "clip": "247-0_shadow_ball",
+     "label": "Shadow ball"
+    },
+    {
+     "clip": "257-0_heat_wave",
+     "label": "Heat wave"
+    },
+    {
+     "clip": "280-0_brick_break",
+     "label": "Brick break"
+    },
+    {
+     "clip": "305-0_poison_fang",
+     "label": "Poison fang"
+    },
+    {
+     "clip": "314-0_air_cutter",
+     "label": "Air cutter"
+    },
+    {
+     "clip": "317-0_rock_tomb",
+     "label": "Rock tomb"
+    },
+    {
+     "clip": "324-0_signal_beam",
+     "label": "Signal beam"
+    },
+    {
+     "clip": "325-0_shadow_punch",
+     "label": "Shadow punch"
+    },
+    {
+     "clip": "332-0_aerial_ace",
+     "label": "Aerial ace"
+    },
+    {
+     "clip": "337-0_dragon_claw",
+     "label": "Dragon claw"
+    },
+    {
+     "clip": "341-0_mud_shot",
+     "label": "Mud shot"
+    },
+    {
+     "clip": "348-0_leaf_blade",
+     "label": "Leaf blade"
+    },
+    {
+     "clip": "352-0_water_pulse",
+     "label": "Water pulse"
+    },
+    {
+     "clip": "362-0_brine",
+     "label": "Brine"
+    },
+    {
+     "clip": "389-0_sucker_punch",
+     "label": "Sucker punch"
+    },
+    {
+     "clip": "398-0_poison_jab",
+     "label": "Poison jab"
+    },
+    {
+     "clip": "399-0_dark_pulse",
+     "label": "Dark pulse"
+    },
+    {
+     "clip": "400-0_night_slash",
+     "label": "Night slash"
+    },
+    {
+     "clip": "401-0_aqua_tail",
+     "label": "Aqua tail"
+    },
+    {
+     "clip": "402-0_seed_bomb",
+     "label": "Seed bomb"
+    },
+    {
+     "clip": "404-0_x_scissor",
+     "label": "X scissor"
+    },
+    {
+     "clip": "405-0_bug_buzz",
+     "label": "Bug buzz"
+    },
+    {
+     "clip": "406-0_dragon_pulse",
+     "label": "Dragon pulse"
+    },
+    {
+     "clip": "408-0_power_gem",
+     "label": "Power gem"
+    },
+    {
+     "clip": "418-0_bullet_punch",
+     "label": "Bullet punch"
+    },
+    {
+     "clip": "420-0_ice_shard",
+     "label": "Ice shard"
+    },
+    {
+     "clip": "421-0_shadow_claw",
+     "label": "Shadow claw"
+    },
+    {
+     "clip": "425-0_shadow_sneak",
+     "label": "Shadow sneak"
+    },
+    {
+     "clip": "426-0_mud_bomb",
+     "label": "Mud bomb"
+    },
+    {
+     "clip": "427-0_psycho_cut",
+     "label": "Psycho cut"
+    },
+    {
+     "clip": "430-0_flash_cannon",
+     "label": "Flash cannon"
+    },
+    {
+     "clip": "435-0_discharge",
+     "label": "Discharge"
+    },
+    {
+     "clip": "438-0_power_whip",
+     "label": "Power whip"
+    },
+    {
+     "clip": "440-0_cross_poison",
+     "label": "Cross poison"
+    },
+    {
+     "clip": "441-0_gunk_shot",
+     "label": "Gunk shot"
+    },
+    {
+     "clip": "442-0_iron_head",
+     "label": "Iron head"
+    },
+    {
+     "clip": "443-0_magnet_bomb",
+     "label": "Magnet bomb"
+    },
+    {
+     "clip": "444-0_stone_edge",
+     "label": "Stone edge"
+    },
+    {
+     "clip": "450-0_bug_bite",
+     "label": "Bug bite"
+    },
+    {
+     "clip": "453-0_aqua_jet",
+     "label": "Aqua jet"
+    },
+    {
+     "clip": "466-0_ominous_wind",
+     "label": "Ominous wind"
+    },
+    {
+     "clip": "473-0_psyshock",
+     "label": "Psyshock"
+    },
+    {
+     "clip": "481-0_flame_burst",
+     "label": "Flame burst"
+    },
+    {
+     "clip": "482-0_sludge_wave",
+     "label": "Sludge wave"
+    },
+    {
+     "clip": "488-0_flame_charge",
+     "label": "Flame charge"
+    },
+    {
+     "clip": "490-0_low_sweep",
+     "label": "Low sweep"
+    },
+    {
+     "clip": "503-0_scald",
+     "label": "Scald"
+    },
+    {
+     "clip": "523-0_bulldoze",
+     "label": "Bulldoze"
+    },
+    {
+     "clip": "524-0_frost_breath",
+     "label": "Frost breath"
+    },
+    {
+     "clip": "529-0_drill_run",
+     "label": "Drill run"
+    },
+    {
+     "clip": "531-0_heart_stamp",
+     "label": "Heart stamp"
+    },
+    {
+     "clip": "540-0_psystrike",
+     "label": "Psystrike"
+    },
+    {
+     "clip": "542-0_hurricane",
+     "label": "Hurricane"
+    },
+    {
+     "clip": "570-0_parabolic_charge",
+     "label": "Parabolic charge"
+    },
+    {
+     "clip": "572-0_petal_blizzard",
+     "label": "Petal blizzard"
+    },
+    {
+     "clip": "574-0_disarming_voice",
+     "label": "Disarming voice"
+    },
+    {
+     "clip": "577-0_draining_kiss",
+     "label": "Draining kiss"
+    },
+    {
+     "clip": "583-0_play_rough",
+     "label": "Play rough"
+    },
+    {
+     "clip": "585-0_moonblast",
+     "label": "Moonblast"
+    },
+    {
+     "clip": "605-0_dazzling_gleam",
+     "label": "Dazzling gleam"
+    }
+   ]
+  }
+ ]
+}

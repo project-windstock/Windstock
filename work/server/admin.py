@@ -76,7 +76,7 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
     </svg></div>
     <div class="word"><h1>Bracky</h1><small>World Manager</small></div>
   </div>
-  <nav class="topnav"><a class="active" href="/">Manager</a><a href="/downloads">World Data</a></nav>
+  <nav class="topnav"><a class="active" href="/">Manager</a><a href="/downloads">World Data</a><a href="/soundpacks">Sound Packs</a></nav>
   <div class="spacer"></div>
   <div class="pill" id="status">Running</div>
   <div class="meta">
@@ -144,8 +144,10 @@ restart.</div>
   <button onclick="raidSave()">Apply</button>
 </div>
 <div class="hint" id="raidhint">Puts one boss in EVERY gym, replacing whatever is
-defending (real defenders are sent home first, nothing is lost). Beat it and it drops
-at your feet as a wild Pokemon you can catch — you have 10 minutes.</div>
+defending (real defenders are sent home first, nothing is lost). Raids are multiplayer:
+each gym's boss has one shared HP pool (settings.json &rarr; raids) that every trainer
+hits together. When it falls, everyone who dealt enough damage gets it dropped at their
+own feet to catch, and that gym's boss respawns a few minutes later.</div>
 
 <h2>Nominations</h2>
 <div class="hint">Added by players from the in-game Help Center
@@ -202,6 +204,19 @@ few seconds.</div>
 <div class="hint">Density = wild Pokemon around you (0&ndash;60). "One species" + a
 Pokemon makes a themed event, e.g. a Pikachu festival.</div>
 
+<h2>Scheduled events</h2>
+<div class="bar">
+  <input id="sc-name" placeholder="Community Day" size="14">
+  <select id="sc-preset"></select>
+  <label class="inline-label">from <input id="sc-start" value="11:00" size="4"></label>
+  <label class="inline-label">to <input id="sc-end" value="14:00" size="4"></label>
+  <input id="sc-days" placeholder="days e.g. 5,6" size="9" title="Mon=0 ... Sun=6; blank = every day">
+  <button onclick="scAdd()">Add</button>
+</div>
+<div class="hint" id="sc-now">Runs itself: while a row's time window is on, its event is
+live and everything goes back to normal afterwards. Mon=0 &hellip; Sun=6.</div>
+<div class="list" id="sc-list"></div>
+
 <div class="list" id="list"></div>
 </main>
 
@@ -239,6 +254,27 @@ async function saveEv(){
   load();
 }
 async function preset(n){await post('/api/preset',{name:n});load();}
+let SCHED=[];
+function scPaint(r){
+  SCHED=r.rows||[];
+  const box=$('sc-list'); box.innerHTML='';
+  $('sc-now').textContent = r.active ? ('Running now: '+r.active) :
+    'Nothing scheduled right now. Mon=0 ... Sun=6; blank days = every day.';
+  SCHED.forEach((row,i)=>{
+    const d=document.createElement('div'); d.className='bar';
+    d.textContent=`${row.name}  ${row.start}-${row.end}  ${row.preset||'custom'}`
+      +(row.days&&row.days.length?('  days '+row.days.join(',')):'  every day');
+    const del=document.createElement('button'); del.textContent='Remove';
+    del.onclick=async()=>{SCHED.splice(i,1);scPaint(await post('/api/schedule',{rows:SCHED}));};
+    d.appendChild(del); box.appendChild(d);
+  });
+}
+async function scAdd(){
+  const days=$('sc-days').value.split(',').map(x=>parseInt(x.trim())).filter(x=>x>=0&&x<=6);
+  SCHED.push({name:$('sc-name').value||'Event',preset:$('sc-preset').value,
+    start:$('sc-start').value,end:$('sc-end').value,days:days,enabled:true});
+  scPaint(await post('/api/schedule',{rows:SCHED}));
+}
 let LOOT_ITEMS=[];
 function lootRow(item,chance,min,max){
   const row=document.createElement('div'); row.className='bar loot-row';
@@ -359,6 +395,8 @@ async function load(){
   if(!$('presets').dataset.done){
     (j.presets||[]).forEach(n=>{const b=document.createElement('button');
       b.textContent=n;b.onclick=()=>preset(n);$('presets').appendChild(b);});
+    (j.presets||[]).forEach(n=>{const o=document.createElement('option');
+      o.value=n;o.textContent=n;$('sc-preset').appendChild(o);});
     $('presets').dataset.done='1';
   }
   if(!map){
@@ -411,6 +449,7 @@ DEX.forEach((n,i)=>{if(i){const o=document.createElement('option');o.value=i;
   o.textContent=i+' '+n;$('raid-mon').appendChild(o);}});
 $('raid-mon').value=150;
 post('/api/raid',{}).then(raidPaint);
+post('/api/schedule',{}).then(scPaint);
 lootLoad();
 post('/api/accounts',{}).then(r=>{(r.accounts||[]).forEach(n=>{
   const o=document.createElement('option');o.value=n;$('accounts').appendChild(o);});});
@@ -448,6 +487,20 @@ class _Handler(BaseHTTPRequestHandler):
                                   .replace("__DEX__", json.dumps(DEX))
                                   .replace("__GIVEABLE__", json.dumps(GIVEABLE)))
 
+        if p == "/soundpacks":
+            import soundpacks_ui
+            return self._send(200, "text/html; charset=utf-8", soundpacks_ui.page())
+        if p == "/api/sp/list":
+            import soundpacks as SP
+            return self._json({"packs": SP.packs()})
+        if p.startswith("/api/sp/file/"):
+            import soundpacks as SP, urllib.parse as _up
+            pack, _, fname = _up.unquote(p[len("/api/sp/file/"):]).partition("/")
+            f = SP.file_path(pack, fname)
+            if not f:
+                return self._send(404, "text/plain", "not found")
+            with open(f, "rb") as fh:
+                return self._send(200, SP.content_type(f), fh.read())
         if p == "/downloads":
             import downloads_ui
             return self._send(200, "text/html; charset=utf-8", downloads_ui.world())
@@ -478,11 +531,31 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         p = self.path.split("?")[0]
         n = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(n) if n else b""
+        if p == "/api/sp/upload":
+            # a raw audio file (not JSON): /api/sp/upload?pack=..&clip=..&name=file.mp3
+            import soundpacks as SP, urllib.parse as _up
+            q = dict(_up.parse_qsl(self.path.partition("?")[2]))
+            ok, msg = SP.put_clip(q.get("pack"), q.get("clip"), q.get("name"), raw)
+            return self._json({"ok": ok, "message": msg})
         try:
-            d = json.loads(self.rfile.read(n) or b"{}")
+            d = json.loads(raw or b"{}")
         except ValueError:
             d = {}
         try:
+            if p in ("/api/sp/create", "/api/sp/delete", "/api/sp/rename", "/api/sp/remove"):
+                import soundpacks as SP
+                if p == "/api/sp/create":
+                    ok, msg = SP.create(d.get("pack"))
+                    return self._json({"ok": ok, "message": msg, "name": SP._safe_pack(d.get("pack"))})
+                if p == "/api/sp/delete":
+                    ok, msg = SP.delete(d.get("pack"))
+                    return self._json({"ok": ok, "message": msg})
+                if p == "/api/sp/rename":
+                    ok, msg = SP.rename(d.get("pack"), d.get("name"))
+                    return self._json({"ok": ok, "message": msg, "name": SP._safe_pack(d.get("name"))})
+                ok, msg = SP.remove_clip(d.get("pack"), d.get("clip"))
+                return self._json({"ok": ok, "message": msg})
             if p == "/downloads/start":
                 import poidownload
                 region = (d.get("region") or "").strip()
@@ -677,6 +750,12 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(PL.set_procedural(d.get("on", True), d.get("what", "both")))
             if p == "/api/save":
                 return self._json(EV.save(d))
+            if p == "/api/schedule":
+                if d.get("rows") is not None:
+                    EV.set_schedule(d.get("rows"))
+                row = EV.active_scheduled()
+                return self._json({"rows": EV.schedule(),
+                                   "active": (row or {}).get("name", "")})
             if p == "/api/preset":
                 m = EV.apply_preset(d.get("name", ""))
                 return self._json(m if m else {"error": "unknown preset"},

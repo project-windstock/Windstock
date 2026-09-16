@@ -192,6 +192,17 @@ def is_night(now_ms, lng=0.0):
     return local_h < 6.0 or local_h >= 20.0
 
 
+def rare_pocket(lat, lng, level=12, chance=0.07):
+    """True if this region is a "good spot" -- the scarce tiers spawn far more here.
+    Deterministic per region cell, so a pocket is in the same place tomorrow."""
+    try:
+        cid = s2sphere.CellId.from_lat_lng(
+            s2sphere.LatLng.from_degrees(lat, lng)).parent(int(level)).id()
+    except Exception:
+        return False
+    return (_mix(cid ^ 0x9E3779B97F4A7C15) % 10000) / 10000.0 < max(0.0, min(1.0, chance))
+
+
 def biome_for(lat, lng, level=12, salt=0):
     """The biome at a location. Uses the REAL terrain of the nearest OSM feature
     when we have data; otherwise a deterministic hash so a whole level-`level` S2

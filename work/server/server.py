@@ -47,6 +47,7 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get("Host", "") or "").split(":")[0].lower()
         path, _, query = self.path.partition("?")
         body = self._read_body()
+        rpc._req_ip.value = self.client_address[0]
         try:
             # Log every non-RPC request. When a login "just fails", this is the
             # difference between knowing the client reached us and guessing.
@@ -80,6 +81,21 @@ class Handler(BaseHTTPRequestHandler):
             elif "pokemon.com" in host:
                 status, headers, out = sso.handle(method, path, query,
                                                   self.headers, body, log)
+            elif path.startswith("/soundpacks/"):
+                # The windstock tweak's "Download packs from server".
+                import soundpacks
+                status, headers, out = soundpacks.handle(method, path, query, self.headers,
+                                                         body, log)
+            elif path.startswith("/weather"):
+                # The windstock tweak's map weather (effects + icon).
+                import weather
+                status, headers, out = weather.handle(method, path, query, self.headers,
+                                                      body, log, self.client_address[0])
+            elif path.startswith("/raid"):
+                # The windstock tweak's raid screens (lobby / HUD / results).
+                import raidlobby
+                status, headers, out = raidlobby.handle(method, path, query, self.headers,
+                                                        body, log, self.client_address[0])
             elif "niantic" in host or path.startswith("/plfe"):
                 status, headers, out = rpc.handle(method, path, query,
                                                   self.headers, body, log)

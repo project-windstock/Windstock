@@ -73,6 +73,9 @@ DEFAULTS = {
         "require_ball_in_circle": True,
         "throw_accuracy_sense": "center_is_zero",   # or "center_is_one"
         "throw_accuracy_tolerance": 0.5,
+        # How much each ball helps, by item id: 1 Poke, 2 Great, 3 Ultra.
+        # (4 = Master Ball, which always catches.)
+        "ball_mult": {"1": 1.0, "2": 1.5, "3": 2.0},
     },
     "pokestops": {
         "per_l15_cell": 1,          # PokeStops per level-15 cell (~300m across)
@@ -125,6 +128,10 @@ DEFAULTS = {
         "defender_bonus_stardust": 500,
         "defender_bonus_max_gyms": 10,
         "defender_bonus_cooldown_hours": 21,
+        # Prestige economy: how fast training raises a gym and attacking drains it.
+        "prestige_gain_mult": 1.0,
+        "prestige_loss_mult": 1.0,
+        "battle_win_coins": 0,          # coins for winning a gym battle (0 = none)
     },
     "spawns": {
         "per_l15_cell": 20,         # wild Pokemon per level-15 cell (~300m across)
@@ -145,6 +152,19 @@ DEFAULTS = {
         "min_cp": 100,
         "max_cp": 1200,
         "allow_legendaries": False,
+        # true = spawn exactly like 2016: real per-species rates (Pidgey ~16% ...
+        # Lapras 0.006%, no wild Ditto/legendaries), regionals on their own
+        # continent, and wild levels up to your trainer level (max 30) with the
+        # real CP formula. false = the older rarity tiers + flat min/max CP.
+        "realistic_2016": True,
+        # 2016 spawn timing: each spawn point appears at its own fixed minute every
+        # hour and lasts 15 minutes, instead of the whole map re-rolling at once.
+        # (Needs realistic_2016.)
+        "hourly_spawn_points": True,
+        # Rare pockets: a few regions in every area are "good spots" where rare and
+        # very rare Pokemon show up far more often -- somewhere worth walking to.
+        "rare_pocket_chance": 0.07,     # share of regions that are a pocket
+        "rare_pocket_boost": 5,         # how much likelier the scarce tiers are there
         # Spawn rarity tiers: the RELATIVE weight of each tier. A species' odds of
         # being the wild Pokemon rolled = its tier weight / the sum of every
         # species' weight, so higher = more common. Lower the rare tiers to make
@@ -182,6 +202,12 @@ DEFAULTS = {
     "eggs": {
         "max_eggs": 9,              # egg bag size
         "drop_chance": 0.35,        # chance a PokeStop spin gives an egg
+        # How often each egg tier drops (relative weights), and what can hatch from
+        # each. Empty species list = the built-in pool for that tier.
+        "tier_weights": {"2": 60, "5": 30, "10": 10},
+        "species_2km": [],
+        "species_5km": [],
+        "species_10km": [],
         "min_step_m": 1.0,          # GPS moves smaller than this are jitter
         # Bigger than this between two GPS fixes is treated as a teleport and does
         # NOT count towards eggs. 120 m was too low: DRIVING moves further than that
@@ -196,6 +222,10 @@ DEFAULTS = {
         "incense_extra_spawns": 6,  # how many more, on top of the usual
         "lure_minutes": 30,         # a Lure on a PokeStop
         "lure_extra_spawns": 4,     # extra Pokemon around a lured stop
+        # true = luring an already-lured stop ADDS its time instead of being refused,
+        # so a group can keep one stop lit all day ("lure party").
+        "lure_stacks": True,
+        "lure_max_minutes": 180,    # ...up to this much banked time
     },
     "pokemon": {
         # true = power-ups follow the real 2016 curve: each one raises the Pokemon
@@ -221,6 +251,39 @@ DEFAULTS = {
         # (you still take the gym on victory). Turn off if enemy battles ever start
         # working natively.
         "attack_as_training": True,
+    },
+    "raids": {
+        "boss_hp_multiplier": 10.0,
+        "boss_damage_multiplier": 0.15,
+        "respawn_minutes": 5.0,
+        "min_damage_percent": 3.0,
+        "catch_minutes": 10.0,
+        "raid_seconds": 180.0,
+        "countdown_seconds": 10.0,
+    },
+    "shop": {
+        "price_multiplier": 1.0,    # 0.5 = half price, 2.0 = double
+    },
+    "daily": {
+        "enabled": True,
+        "catch_xp": 500,
+        "catch_dust": 500,
+        "catch7_xp": 2000,
+        "catch7_dust": 2000,
+        "catch7_items": {"2": 5},
+        "spin_xp": 500,
+        "spin_dust": 500,
+        "spin7_xp": 2000,
+        "spin7_dust": 2000,
+        "spin7_items": {"2": 5, "101": 3},
+    },
+    "weather": {
+        "enabled": True,
+        "spawn_boost": 3,
+        "cp_boost_percent": 20.0,
+        "stardust_bonus_percent": 25.0,
+        "windy_kmh": 24.0,
+        "force": "",
     },
     "distances": {
         # How far you can reach, in metres. These ship to the client inside
@@ -417,6 +480,43 @@ _README = [
     "   special_damage ....... damage your charged move does",
     "   defender_damage ...... damage the gym Pokemon does back to you",
     "   win_xp ............... XP for taking down a whole Gym",
+    "",
+    "raids:  (Raid mode in the World Manager -- multiplayer bosses)",
+    "   boss_hp_multiplier ... the boss has this many times its normal HP, in ONE",
+    "                          pool shared by every trainer fighting it",
+    "   boss_damage_multiplier  the boss's counter-attacks do this fraction of their",
+    "                          normal damage (1.0 = full; a CP 9999 boss one-shots",
+    "                          most Pokemon at full strength)",
+    "   respawn_minutes ...... after it falls, the gym's boss comes back at full HP",
+    "                          this many minutes later",
+    "   min_damage_percent ... share of the boss's HP a trainer must deal to get",
+    "                          the catch (stops a single last-second tap counting)",
+    "   catch_minutes ........ how long the dropped boss stays catchable",
+    "   raid_seconds ......... raid timer shown on the raid screen; when it runs out",
+    "                          the raid fails and the boss heals to full",
+    "   countdown_seconds .... lobby countdown after someone presses Start",
+    "",
+    "shop:",
+    "   price_multiplier ..... scales every price in the in-game shop",
+    "",
+    "daily:  (daily catch/spin streaks, like the real game's daily bonus)",
+    "   enabled .............. false = no daily bonuses at all",
+    "   catch_xp / catch_dust  first catch of the day",
+    "   catch7_xp / catch7_dust / catch7_items   ...and every 7th day in a row",
+    "   spin_xp / spin_dust .. first PokeStop spin of the day",
+    "   spin7_xp / spin7_dust / spin7_items      ...and every 7th day in a row",
+    "   the *_items are {\"item id\": count} -- 2 = Great Ball, 101 = Potion",
+    "",
+    "weather:  (real weather from Open-Meteo -- the only feature that uses the internet)",
+    "   enabled .............. false = no weather, nothing is ever sent out",
+    "   spawn_boost .......... Pokemon of the weather's types spawn this many times",
+    "                          as often (very rare Pokemon are never boosted)",
+    "   cp_boost_percent ..... boosted wild Pokemon get this much more CP (still",
+    "                          capped at what the species can reach)",
+    "   stardust_bonus_percent  extra stardust for catching a boosted Pokemon",
+    "   windy_kmh ............ wind speed that turns dry weather into 'Windy'",
+    "   force ................ '' = real weather; or sunny, clear, partly_cloudy,",
+    "                          cloudy, rainy, snow, fog, windy to fix it (testing)",
     "",
     "avatar:  (what your trainer wears)",
     "   choose_in_game ....... true = the game's own dress-up screen opens the",

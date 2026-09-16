@@ -66,7 +66,9 @@ def _read_file():
 
 
 def get():
-    """Current config (DEFAULTS merged with events.json), hot-reloaded by mtime."""
+    """Current config (DEFAULTS merged with events.json), hot-reloaded by mtime.
+    A scheduled event (see set_schedule) overrides the saved one while it runs, so
+    double-XP hours, spawn surges and community days need nobody at the keyboard."""
     with _lock:
         try:
             m = os.path.getmtime(EVENTS_FILE)
@@ -77,7 +79,17 @@ def get():
             cfg.update(_read_file())
             _cache["cfg"] = _sanitize(cfg)
             _cache["mtime"] = m
-        return dict(_cache["cfg"])
+        cfg = dict(_cache["cfg"])
+    row = active_scheduled()
+    if row:
+        over = dict(PRESETS.get(row.get("preset"), {}))
+        over.update(row.get("cfg") or {})
+        if over:
+            cfg.update(over)
+            cfg["event_name"] = row.get("name") or over.get("event_name", cfg.get("event_name"))
+            cfg = _sanitize(cfg)
+            cfg["scheduled"] = row.get("name", True)
+    return cfg
 
 
 def save(cfg):
@@ -96,6 +108,80 @@ def save(cfg):
 def apply_preset(name):
     p = PRESETS.get(name)
     return save(p) if p else None
+
+
+def _hhmm(v, default):
+    """'HH:MM' -> minutes since midnight."""
+    try:
+        h, m = str(v).split(":")
+        return max(0, min(24 * 60, int(h) * 60 + int(m)))
+    except Exception:
+        return default
+
+
+def schedule():
+    """The saved list of scheduled events (see set_schedule)."""
+    cfg = _read_file() or {}
+    rows = cfg.get("schedule")
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+def set_schedule(rows):
+    """Replace the schedule. Each row:
+        {"name": "Community Day", "preset": "Pikachu Festival",
+         "days": [5, 6],            # weekday numbers, Mon=0; [] or missing = every day
+         "start": "11:00", "end": "14:00",
+         "from": "2026-09-01", "to": "2026-12-31"}   # optional date window
+    A row may carry "cfg": {...} instead of "preset" to set values directly."""
+    clean = []
+    for r in (rows or []):
+        if not isinstance(r, dict):
+            continue
+        row = {"name": str(r.get("name", "Event"))[:40],
+               "start": str(r.get("start", "00:00"))[:5],
+               "end": str(r.get("end", "23:59"))[:5],
+               "days": [int(d) % 7 for d in (r.get("days") or []) if str(d).isdigit()],
+               "enabled": bool(r.get("enabled", True))}
+        if r.get("preset") in PRESETS:
+            row["preset"] = r["preset"]
+        if isinstance(r.get("cfg"), dict):
+            row["cfg"] = r["cfg"]
+        for k in ("from", "to"):
+            if r.get(k):
+                row[k] = str(r[k])[:10]
+        clean.append(row)
+    cfg = _read_file() or {}
+    cfg["schedule"] = clean
+    with _lock:
+        with open(EVENTS_FILE, "w", encoding="utf-8") as fh:
+            json.dump(cfg, fh, indent=1)
+        _cache["mtime"] = None
+    return clean
+
+
+def active_scheduled(now=None):
+    """The scheduled row running right now, or None. Later rows win, so a special
+    one-off can sit on top of a weekly slot."""
+    import time as _time
+    lt = _time.localtime(now or _time.time())
+    minute = lt.tm_hour * 60 + lt.tm_min
+    today = _time.strftime("%Y-%m-%d", lt)
+    hit = None
+    for row in schedule():
+        if not row.get("enabled", True):
+            continue
+        if row.get("days") and lt.tm_wday not in row["days"]:
+            continue
+        if row.get("from") and today < row["from"]:
+            continue
+        if row.get("to") and today > row["to"]:
+            continue
+        start = _hhmm(row.get("start"), 0)
+        end = _hhmm(row.get("end"), 24 * 60)
+        inside = (start <= minute < end) if start <= end else (minute >= start or minute < end)
+        if inside:
+            hit = row
+    return hit
 
 
 def _clampi(v, lo, hi, d):

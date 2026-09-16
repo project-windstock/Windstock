@@ -1132,7 +1132,15 @@ def hatch_species(target_km):
     pools = _egg_species_pools()
     tier = min(EGG_TIERS, key=lambda t: abs(t - float(target_km)))
     rnd = _random.Random()
-    pid = rnd.choice(pools[tier])
+    custom = []
+    for x in (_cfg.get("eggs", f"species_{int(tier)}km") or []):
+        try:
+            xi = int(x)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= xi <= 151:
+            custom.append(xi)
+    pid = rnd.choice(custom or pools[tier])
     lo = int(200 + tier * 60)
     hi = int(lo + tier * 110)
     return pid, rnd.randint(lo, hi)
@@ -1519,7 +1527,11 @@ def catch_chance(pokemon_id, cp, ball_id, reticle, berry_mult, hit_position=None
     base = _cfg.get("catching", "base_catch_rate", cast=float)
     # a 2000 CP Pokemon should be a real fight; a 100 CP one shouldn't
     base *= max(0.18, 1.0 - (max(0, int(cp)) / 3200.0))
-    base *= {1: 1.0, 2: 1.5, 3: 2.0}.get(int(ball_id), 1.0)      # poke/great/ultra
+    _bm = _cfg.get("catching", "ball_mult") or {}
+    try:
+        base *= float(_bm.get(str(int(ball_id)), {1: 1.0, 2: 1.5, 3: 2.0}.get(int(ball_id), 1.0)))
+    except (TypeError, ValueError):
+        base *= {1: 1.0, 2: 1.5, 3: 2.0}.get(int(ball_id), 1.0)
     # The tight-ring aim bonus only counts if the ball actually LANDED in the ring
     # (validated throw); a small ring that clipped the edge gets nothing extra.
     if throw_accuracy_ok(hit_position):
@@ -1973,13 +1985,15 @@ def throw_bonus(reticle, spin=0.0, hit_position=None):
     return None
 
 
-def build_capture_award(reticle=0.0, spin=0.0, hit_position=None):
+def build_capture_award(reticle=0.0, spin=0.0, hit_position=None, extra_dust=0, extra_xp=0):
     """CaptureAward { activity_type=1, xp=2, candy=3, stardust=4 } -- four PARALLEL
     repeated arrays, one slot per bonus line the client shows on the catch screen."""
     acts, xps, candy, dust = ([ACT_CATCH],
                               [_cfg.get("catching", "xp_per_catch", cast=int)],
                               [_cfg.get("catching", "candy_per_catch", cast=int)],
                               [_cfg.get("catching", "stardust_per_catch", cast=int)])
+    dust[0] += int(extra_dust)                  # weather-boosted catch
+    xps[0] += int(extra_xp)                     # daily catch bonus / streak
     bonus = throw_bonus(reticle, spin, hit_position)
     if bonus:
         act, _label, xp = bonus
@@ -2112,7 +2126,7 @@ def build_catch_pokemon_response(encounter_id, pokeball, hit, now_ms,
         flee = _cfg.get("catching", "flee_chance", cast=float) / max(1.0, mult)
         if rnd.random() < flee:
             world.remove_spawn(encounter_id)              # gone for good
-            world.mark_despawned(encounter_id, _window(now_ms)[1])
+            world.mark_despawned(encounter_id, max(_window(now_ms)[1], int(s.get("expires_ms", 0) or 0)))
             return pb.Writer().uint(1, 3).to_bytes()      # CATCH_FLEE
         return pb.Writer().uint(1, 2).to_bytes()          # CATCH_ESCAPE - try again
     world.berry_mult(encounter_id, consume=True)
@@ -2136,15 +2150,29 @@ def build_catch_pokemon_response(encounter_id, pokeball, hit, now_ms,
     world.drop_bonus_spawn(world.current().username, encounter_id)
     # ...and keep it gone. Spawns are regenerated deterministically per window, so
     # without this the next GET_MAP_OBJECTS would put it right back on the map.
-    world.mark_despawned(encounter_id, _window(now_ms)[1])
-    award, total_xp = build_capture_award(reticle, spin, hit_position)
+    world.mark_despawned(encounter_id, max(_window(now_ms)[1], int(s.get("expires_ms", 0) or 0)))
+    # Weather-boosted catch: extra stardust, shown on the catch screen AND credited.
+    _wx_dust = 0
+    try:
+        import weather as _w
+        if _w.is_boosted(s["pokemon_id"], s["lat"], s["lng"]):
+            _wx_dust = int(round(_cfg.get("catching", "stardust_per_catch", cast=int)
+                                 * _cfg.get("weather", "stardust_bonus_percent", cast=float) / 100.0))
+    except Exception:
+        _wx_dust = 0
+    _d_xp, _d_dust, _d_items, _d_days, _d_seventh = world.daily_streak("catch")
+    if _d_xp or _d_dust:
+        world.log_action({"kind": "daily", "what": "catch", "t": now_ms,
+                          "days": _d_days, "xp": _d_xp, "dust": _d_dust})
+    award, total_xp = build_capture_award(reticle, spin, hit_position,
+                                          extra_dust=_wx_dust + _d_dust, extra_xp=_d_xp)
     world.add_xp(total_xp)
     # The catch screen has always SHOWN "+candy, +stardust", but nothing ever
     # credited them -- stardust sat at its starting value forever and the only
     # candy you could get was 1 per transfer.
     world.add_candy(pokemon_family(s["pokemon_id"]),
                     _cfg.get("catching", "candy_per_catch", cast=int))
-    world.add_stardust(_cfg.get("catching", "stardust_per_catch", cast=int))
+    world.add_stardust(_cfg.get("catching", "stardust_per_catch", cast=int) + _wx_dust + _d_dust)
     return (pb.Writer()
             .uint(1, 1)                                   # CATCH_SUCCESS
             .double(2, 0.0)                               # miss_percent
@@ -2714,13 +2742,13 @@ def _battle_pokemon_info(pokemon_id, uid, cp, hp, energy=0, extra=None,
             .to_bytes())
 
 
-def _battle_participant(pokemon_id, uid, cp, hp, trainer, level) -> bytes:
+def _battle_participant(pokemon_id, uid, cp, hp, trainer, level, hp_max=None) -> bytes:
     """BattleParticipant { active_pokemon=1, trainer_public_profile=2,
     reverse_pokemon=3, defeated_pokemon=4 }."""
     profile = (pb.Writer().string(1, trainer).int_(2, level)
                .message(3, build_player_avatar()).to_bytes())
     return (pb.Writer()
-            .message(1, _battle_pokemon_info(pokemon_id, uid, cp, hp))
+            .message(1, _battle_pokemon_info(pokemon_id, uid, cp, hp, hp_max=hp_max))
             .message(2, profile)
             .to_bytes())
 
@@ -2829,6 +2857,15 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
     is_raid = bool(defender.get("raid"))
     bid = "B%x%04x" % (now_ms, (defender["uid"] ^ atk["uid"]) & 0xFFFF)
     dhp = _hp_for(defender["cp"], defender["pokemon_id"], defender["uid"])
+    dmax = dhp
+    if is_raid:
+        # Multiplayer raid: the boss has ONE shared HP pool (scaled up so it takes a
+        # group), and you join the fight at whatever HP the others have left it on.
+        dmax = max(1, int(dhp * _cfg.get("raids", "boss_hp_multiplier", cast=float)))
+        boss = world.raid_boss_state(gym_id, dmax, now_ms)
+        if boss["hp"] <= 0:
+            return pb.Writer().uint(1, 5).to_bytes()           # GYM_EMPTY: boss down, respawning
+        dhp = boss["hp"]
     ahp = _hp_for(atk["cp"], atk["pokemon_id"], atk["uid"])
     # Same-team gyms are TRAINING; enemy gyms are NORMAL (attack). The client runs
     # the fight locally and -- measured on this build -- will enter combat for a
@@ -2854,7 +2891,7 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
                           "atk_pid": atk["pokemon_id"], "def_pid": defender["pokemon_id"],
                           "atk_cp": atk["cp"], "def_cp": defender["cp"],
                           "atk_hp": ahp, "def_hp": dhp,
-                          "atk_max": ahp, "def_max": dhp, "type": btype,
+                          "atk_max": ahp, "def_max": dmax, "type": btype,
                           "raid": is_raid, "friendly": friendly,
                           "lineup": lineup, "beaten": [], "prestige_delta": 0,
                           "start": now_ms, "player": world.current().username}
@@ -2885,26 +2922,34 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
             .string(4, bid)
             .message(5, _battle_participant(defender["pokemon_id"], defender["uid"],
                                             defender["cp"], dhp,
-                                            defender.get("trainer", "Rival"), def_lvl))
+                                            defender.get("trainer", "Rival"), def_lvl,
+                                            hp_max=dmax))
             .message(6, log)
             .to_bytes())
 
 
-def _raid_drop(b, now_ms):
-    """Put the defeated raid boss on the map at the trainer's feet, catchable."""
+def _raid_drop(b, now_ms, username=None):
+    """Put the defeated raid boss on the map at a trainer's feet, catchable. In a
+    group raid this runs once per rewarded trainer, each at their own position."""
     import world
     import rpc as _rpc
-    lat, lng = _rpc._last_loc[0], _rpc._last_loc[1]
-    if not (abs(lat) > 1e-6 or abs(lng) > 1e-6):
+    username = username or world.current().username
+    loc = world.player_location(username)
+    if loc is None and username == world.current().username:
+        loc = (_rpc._last_loc[0], _rpc._last_loc[1])
+    if not loc or not (abs(loc[0]) > 1e-6 or abs(loc[1]) > 1e-6):
         return None
+    lat, lng = loc
     # a couple of metres away so it isn't inside the avatar
     lat += 0.00002
-    eid = (now_ms ^ (b["def_uid"] if "def_uid" in b else b["defender"])
-           ^ 0x5A1DD40D) & ((1 << 62) - 1)
+    uh = 0
+    for ch in username:                              # per-trainer id: same ms, different drops
+        uh = (uh * 31 + ord(ch)) & 0xFFFFFFFF
+    eid = (now_ms ^ b["defender"] ^ (uh << 24) ^ 0x5A1DD40D) & ((1 << 62) - 1)
     sid = _hex_id((eid, "raid"), 11)
-    expires = now_ms + 10 * 60 * 1000               # ten minutes to catch it
+    expires = now_ms + int(_cfg.get("raids", "catch_minutes", cast=float) * 60 * 1000)
     world.remember_spawn(eid, b["def_pid"], lat, lng, b["def_cp"], sid, expires)
-    world.add_bonus_spawn(world.current().username, eid, b["def_pid"],
+    world.add_bonus_spawn(username, eid, b["def_pid"],
                           b["def_cp"], lat, lng, expires)
     return eid
 
@@ -3080,6 +3125,19 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
     hit_quick = _rq if _rq is not None else max(1, round(dmg_atk * eff_quick))
     hit_special = _rs if _rs is not None else max(1, round(dmg_special * eff_special * pow_factor))
     hit_back = _rb if _rb is not None else max(1, round(dmg_back * eff_back))
+    if b.get("raid"):
+        # A raid boss is tuned for a GROUP: huge shared HP, but its counter-attack is
+        # scaled down -- at full strength a CP 9999 boss one-shots anything a normal
+        # trainer owns (measured: CP 882 Hypno, 67 HP, gone in two hits).
+        hit_back = max(1, int(round(hit_back * _cfg.get(
+            "raids", "boss_damage_multiplier", cast=float))))
+
+    # Multiplayer raid: start from the SHARED boss HP, so the bar includes every hit
+    # the other trainers landed since our last request.
+    raid_start_hp = None
+    if b.get("raid"):
+        b["def_hp"] = world.raid_boss_state(gym_id, b["def_max"], now_ms)["hp"]
+        raid_start_hp = b["def_hp"]
 
     cursor = max(now_ms, int(last_seen) + 1, int(b.get("last_emit", 0)) + 1)
     tail = None          # end of the last action we echoed, on the CLIENT's clock
@@ -3130,6 +3188,23 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
     # times, a wall-clock faint would land ~1.7e12 ms away and never play.
     t = tail if tail is not None else cursor
 
+    if raid_start_hp is not None:
+        # Bank this request's damage into the shared pool; the pool's answer is the
+        # boss's real HP (someone else may have finished it meanwhile).
+        me_name = b.get("player") or world.current().username
+        dealt = max(0, raid_start_hp - max(0, b["def_hp"]))
+        left, felled, group = world.raid_hit(
+            gym_id, me_name, dealt, now_ms,
+            _cfg.get("raids", "respawn_minutes", cast=float) * 60 * 1000)
+        b["def_hp"] = left
+        if felled:
+            # Reward the whole group once: everyone who did enough damage gets the
+            # boss dropped at their own feet, whether or not they're still fighting.
+            need = b["def_max"] * _cfg.get("raids", "min_damage_percent", cast=float) / 100.0
+            for who, dmg in group.items():
+                if dmg >= need:
+                    _raid_drop(b, now_ms, who)
+
     state = BS_ACTIVE
     if b["def_hp"] <= 0:
         log_actions.append(_action(BA_FAINT, t, 0, 0, 0,
@@ -3137,6 +3212,8 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
         # Tally prestige for beating THIS defender (raids have no gym to move).
         if not b.get("raid"):
             dp = world.prestige_for_defeat(b["atk_cp"], b["def_cp"])
+            dp = int(dp * _cfg.get("gyms", "prestige_gain_mult" if b.get("friendly")
+                                   else "prestige_loss_mult", cast=float))
             b["prestige_delta"] = b.get("prestige_delta", 0) + (
                 dp if b.get("friendly") else -dp)
         b.setdefault("beaten", []).append(b["defender"])
@@ -3159,9 +3236,10 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
         else:
             state = BS_VICTORY
             if b.get("raid"):
-                # Beating the boss doesn't take the gym -- it drops the Pokemon at
-                # your feet so you can actually catch the thing you just fought.
-                _raid_drop(b, now_ms)
+                # Beating the boss doesn't take the gym. The catchable drops were
+                # already handed to every qualifying trainer when the shared HP hit 0
+                # (above), so each raider just gets the victory + XP here.
+                pass
             else:
                 # Whole lineup down: bank the run's prestige. Training raises the
                 # gym; attacking drains it, and at 0 add_prestige() sends everyone
@@ -3170,6 +3248,9 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
                     gym_id, b.get("prestige_delta", 0))
                 b["gym_result"] = (newp, lvl, len(ejected))
             world.add_xp(_cfg.get("battles", "win_xp", cast=int))
+            _coins = _cfg.get("gyms", "battle_win_coins", cast=int)
+            if _coins > 0:
+                world.add_coins(_coins)
             # Ace Trainer (training your own team's gym) vs Battle Girl (taking
             # someone else's) -- scored from the REAL relationship, not the type we
             # reported to the client.
@@ -3506,14 +3587,28 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
     eggs_got = 0
     if rnd.random() < _cfg.get("eggs", "drop_chance", cast=float):
         # 2 km eggs are common, 10 km rare -- same shape as the real drop table.
-        tier = rnd.choices(EGG_TIERS, weights=(60, 30, 10))[0]
+        _tw = _cfg.get("eggs", "tier_weights") or {}
+        _weights = [max(0.0, float(_tw.get(str(int(t)), d)))
+                    for t, d in zip(EGG_TIERS, (60, 30, 10))]
+        if sum(_weights) <= 0:
+            _weights = [60, 30, 10]
+        tier = rnd.choices(EGG_TIERS, weights=_weights)[0]
         # No item award for the egg: item 901 is an INCUBATOR, not an egg, and
         # reporting it made the spin look like it handed out an incubator. The egg
         # itself arrives with the next inventory delta.
         if world.give_egg(tier):
             eggs_got = 1
     world.bump("poke_stop_visits")
-    world.add_xp(_cfg.get("pokestops", "xp_per_spin", cast=int))
+    _s_xp, _s_dust, _s_items, _s_days, _s_seventh = world.daily_streak("spin")
+    world.add_xp(_cfg.get("pokestops", "xp_per_spin", cast=int) + _s_xp)
+    if _s_dust:
+        world.add_stardust(_s_dust)
+    if _s_xp or _s_dust:
+        world.log_action({"kind": "daily", "what": "spin", "t": now_ms,
+                          "days": _s_days, "xp": _s_xp, "dust": _s_dust})
+    for _iid, _cnt in _s_items:                 # streak items ride along in the haul
+        for _ in range(int(_cnt)):
+            w.message(2, build_item_award(int(_iid), 1))
     for iid, cnt in awards:
         # One ItemAward per ITEM, each count 1, like the real server: the client
         # draws one bubble per award, so "Poke Ball x3" as a single award shows
@@ -3529,7 +3624,7 @@ def build_fort_search_response(fort_id, now_ms) -> bytes:
     _cool = _cfg.get("pokestops", "cooldown_minutes", cast=float)
     _until = now_ms + int(_cool * 60_000)
     world.set_spin_cooldown(fort_id, _until)                   # map keeps it purple
-    return (w.int_(5, _cfg.get("pokestops", "xp_per_spin", cast=int))   # experience_awarded
+    return (w.int_(5, _cfg.get("pokestops", "xp_per_spin", cast=int) + _s_xp)   # experience_awarded
              .int_(6, _until)                                  # cooldown (goes purple)
              .to_bytes())
 
@@ -3669,6 +3764,60 @@ _POOL = None
 _POOL_KEY = None
 
 
+# ---- 2016-accurate spawns (spawns.realistic_2016) --------------------------------
+# Per-species spawn chance from the community datamine of the 2016 game
+# (spawn_rates_2016.json): Pidgey ~16%, Rattata ~13% ... Lapras 0.006%, and 0 for
+# the six that never spawned wild in 2016 (Ditto, the birds, Mewtwo, Mew).
+_RATES_2016 = None
+
+
+def _rates_2016():
+    global _RATES_2016
+    if _RATES_2016 is None:
+        try:
+            import json as _json, os as _os
+            with open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                    "spawn_rates_2016.json"), encoding="utf-8") as fh:
+                _RATES_2016 = {int(k): float(v) for k, v in _json.load(fh)["rates"].items()}
+        except Exception:
+            _RATES_2016 = {}
+    return _RATES_2016
+
+
+def _realistic():
+    return bool(_rates_2016()) and _cfg.get("spawns", "realistic_2016", cast=bool)
+
+
+# 2016 regionals: each only spawned on its own continent.
+_REGIONALS = {
+    83:  "asia",           # Farfetch'd
+    115: "australia",      # Kangaskhan
+    122: "europe",         # Mr. Mime
+    128: "north_america",  # Tauros
+}
+
+
+def _region_of(lat, lng):
+    if lat is None or lng is None:
+        return None
+    if -50 <= lat <= -10 and 110 <= lng <= 180:
+        return "australia"
+    if 34 <= lat <= 72 and -25 <= lng <= 45:
+        return "europe"
+    if 5 <= lat <= 75 and 45 < lng <= 180:
+        return "asia"
+    if 7 <= lat <= 75 and -170 <= lng <= -50:
+        return "north_america"
+    return "other"
+
+
+def _regional_ok(pid, lat, lng):
+    want = _REGIONALS.get(int(pid))
+    if not want or lat is None or lng is None:
+        return True
+    return _region_of(lat, lng) == want
+
+
 def _tier_weights():
     """The rarity tier weights, tunable in settings.json (hot-reloaded)."""
     return {t: max(1, _cfg.get("spawns", f"weight_{t}", cast=int))
@@ -3676,6 +3825,10 @@ def _tier_weights():
 
 
 def _tier_of(pid):
+    if _realistic():
+        c = _rates_2016().get(int(pid), 0.0)
+        return ("very_rare" if c < 0.05 else "rare" if c < 0.3 else
+                "uncommon" if c < 1.0 else "common")
     return ("very_rare" if pid in _VERY_RARE else
             "rare" if pid in _RARE else
             "uncommon" if pid in _UNCOMMON else "common")
@@ -3688,13 +3841,20 @@ def _spawn_pool():
     allow_leg = _cfg.get("spawns", "allow_legendaries", cast=bool)
     w = _tier_weights()
     key = (allow_leg, tuple(sorted(w.items())))
+    key = key + (_realistic(),)
     if _POOL is None or _POOL_KEY != key:
         _POOL_KEY = key
         pool = []
         for pid in range(1, 152):
             if pid in _LEGENDARY and not allow_leg:
                 continue
-            pool += [pid] * w[_tier_of(pid)]
+            if _realistic():
+                c = _rates_2016().get(pid, 0.0)
+                if c <= 0:
+                    continue                    # never wild in 2016 (Ditto, legendaries)
+                pool += [pid] * max(1, int(round(c * 100)))
+            else:
+                pool += [pid] * w[_tier_of(pid)]
         _POOL = pool
     return _POOL
 
@@ -3713,7 +3873,7 @@ def _biome(lat, lng):
 
 def _biome_pool(biome, allow_leg):
     w = _tier_weights()
-    key = (biome, allow_leg, tuple(sorted(w.items())))
+    key = (biome, allow_leg, tuple(sorted(w.items())), _realistic())
     pool = _BIOME_POOLS.get(key)
     if pool is not None:
         return pool
@@ -3735,17 +3895,103 @@ def _biome_pool(biome, allow_leg):
         # gets none) so Dratini stays a trophy by the water even though Water is
         # favoured there.
         mult = min(mult, _BIOME_CAP[tier])
-        pool += [pid] * (w[tier] * mult)
+        if _realistic():
+            c = _rates_2016().get(pid, 0.0)
+            if c <= 0:
+                continue
+            pool += [pid] * (max(1, int(round(c * 100))) * mult)
+        else:
+            pool += [pid] * (w[tier] * mult)
     _BIOME_POOLS[key] = pool or _spawn_pool()
     return _BIOME_POOLS[key]
 
 
+# Weather (weather.py): the pool below, re-weighted so the weather's types spawn more.
+# Cached per (pool, boosted types, strength); very rares are never boosted.
+_WEATHER_POOLS = {}
+import threading as _wx_threading
+_PICK_LOC = _wx_threading.local()   # where the species being rolled spawns (for _pick_cp)
+
+
+def _weather_pool(pool, lat, lng):
+    try:
+        import weather as _w
+        types = _w.boosted_types(lat, lng)
+    except Exception:
+        return pool
+    boost = _cfg.get("weather", "spawn_boost", cast=int)
+    if not types or boost <= 1:
+        return pool
+    key = (id(pool), len(pool), tuple(sorted(types)), boost)
+    wp = _WEATHER_POOLS.get(key)
+    if wp is None:
+        if len(_WEATHER_POOLS) > 64:
+            _WEATHER_POOLS.clear()
+        counts = {}
+        for pid in pool:
+            counts[pid] = counts.get(pid, 0) + 1
+        wp = []
+        for pid, n in counts.items():
+            favoured = pid not in _VERY_RARE and any(t in types for t in pokemon_types(pid))
+            wp += [pid] * (n * (boost if favoured else 1))
+        _WEATHER_POOLS[key] = wp
+    return wp
+
+
+_POCKET_POOLS = {}
+
+
+def _pocket_pool(pool, lat, lng):
+    """In a rare pocket, rare/very rare species get extra weight in the pool."""
+    boost = _cfg.get("spawns", "rare_pocket_boost", cast=int)
+    if boost <= 1 or lat is None or lng is None:
+        return pool
+    try:
+        import biomes as _bio
+        if not _bio.rare_pocket(lat, lng, _cfg.get("spawns", "biome_size", cast=int),
+                                _cfg.get("spawns", "rare_pocket_chance", cast=float)):
+            return pool
+    except Exception:
+        return pool
+    key = (id(pool), len(pool), boost)
+    got = _POCKET_POOLS.get(key)
+    if got is None:
+        if len(_POCKET_POOLS) > 64:
+            _POCKET_POOLS.clear()
+        got = list(pool)
+        for pid in set(pool):
+            tier = _tier_of(pid)
+            if tier in ("rare", "very_rare"):
+                got += [pid] * (pool.count(pid) * (boost - 1) if pool.count(pid) else boost)
+        _POCKET_POOLS[key] = got
+    return got
+
+
 def _pick_species(rnd, cfg=None, lat=None, lng=None):
+    """Which Pokemon spawns here. Every path (nests, day/night re-rolls, biomes) is
+    checked against 2016 regionals at the end, so a Tauros never leaks into Paris."""
+    pid = _pick_species_any(rnd, cfg, lat, lng)
+    if lat is None or lng is None or _FORCE_POKEMON:
+        return pid
+    c = cfg or _event_cfg()
+    if c.get("species_mode", "all") != "all":
+        return pid                              # an event picked it on purpose
+    for _ in range(12):
+        if _regional_ok(pid, lat, lng):
+            return pid
+        pid = _pick_species_any(rnd, cfg, lat, lng)
+    return 16 if not _regional_ok(pid, lat, lng) else pid   # give up: a Pidgey
+
+
+def _pick_species_any(rnd, cfg=None, lat=None, lng=None):
     """Which Pokemon spawns, honouring the event's species mode. In the normal
     'all' mode the spawn is flavoured by the biome at (lat, lng) when we know it,
     so different areas favour different Pokemon the way 2016's biomes did. An
     event that forces a species/list overrides the biome (a Pikachu event is a
     Pikachu event everywhere)."""
+    # Every caller rolls the CP right after the species, so remember where this spawn
+    # is: _pick_cp uses it to give weather-boosted Pokemon their extra CP.
+    _PICK_LOC.value = (lat, lng) if lat is not None and lng is not None else None
     if _FORCE_POKEMON:
         return _FORCE_POKEMON
     c = cfg or _event_cfg()
@@ -3767,8 +4013,13 @@ def _pick_species(rnd, cfg=None, lat=None, lng=None):
                     _cfg.get("spawns", "nest_rotation_days", cast=int))
                 if nest and rnd.random() < _cfg.get("spawns", "nest_chance", cast=float):
                     return int(nest)
-            pool = _biome_pool(_biome(lat, lng), allow_leg)
+            pool = _pocket_pool(_weather_pool(_biome_pool(_biome(lat, lng), allow_leg),
+                                              lat, lng), lat, lng)
             pid = int(rnd.choice(pool))
+            for _ in range(8):                  # 2016 regionals stay on their continent
+                if _regional_ok(pid, lat, lng):
+                    break
+                pid = int(rnd.choice(pool))
             # DAY/NIGHT: shy away from wrong-time species so nocturnal Pokemon
             # (Zubat, ghosts, ...) really are a night thing and vice versa.
             if _cfg.get("spawns", "day_night", cast=bool):
@@ -3779,11 +4030,45 @@ def _pick_species(rnd, cfg=None, lat=None, lng=None):
             return pid
         except Exception:
             pass                       # biomes unavailable: fall back to the flat pool
+    if lat is not None and lng is not None:
+        pool = _weather_pool(_spawn_pool(), lat, lng)
+        pid = int(rnd.choice(pool))
+        for _ in range(8):                      # 2016 regionals stay on their continent
+            if _regional_ok(pid, lat, lng):
+                break
+            pid = int(rnd.choice(pool))
+        return pid
     return int(rnd.choice(_spawn_pool()))
+
+
+def _wild_cp_2016(rnd, pid):
+    """2016 rule: a wild Pokemon's level is random from 1 up to your trainer level,
+    capped at 30, and its CP comes from the real formula (base stats + IVs + level)."""
+    st = _gd.STATS.get(int(pid)) if _gd else None
+    if not st or not (_gd and _gd.CPM):
+        return None
+    try:
+        import world
+        trainer = int(world.stats()[0])
+    except Exception:
+        trainer = 30
+    cap = max(1, min(30, trainer))
+    level = rnd.randint(1, cap)
+    cpm = _gd.CPM[min(len(_gd.CPM), level) - 1]
+    a, d, s = st
+    ia, idf, ist = rnd.randint(0, 15), rnd.randint(0, 15), rnd.randint(0, 15)
+    cp = int((a + ia) * _math.sqrt(d + idf) * _math.sqrt(s + ist) * cpm * cpm / 10)
+    return max(10, cp)
 
 
 def _pick_cp(rnd, cfg=None, pid=None):
     c = cfg or _event_cfg()
+    # Normal days use the 2016 level rule; an event keeps its own CP range.
+    if (pid and _realistic() and c.get("event_name", "Normal") == "Normal"
+            and not c.get("scheduled")):
+        v = _wild_cp_2016(rnd, pid)
+        if v is not None:
+            return v
     lo = int(c.get("min_cp", _cfg.get("spawns", "min_cp", cast=int)))
     hi = int(c.get("max_cp", _cfg.get("spawns", "max_cp", cast=int)))
     if lo > hi:
@@ -3797,7 +4082,22 @@ def _pick_cp(rnd, cfg=None, pid=None):
         if cap > 0:
             hi = min(hi, cap)
             lo = min(lo, hi)
-    return rnd.randint(lo, hi)
+    v = rnd.randint(lo, hi)
+    # Weather boost: a wild Pokemon of the weather's type rolls higher CP (the real
+    # 2017 game raised its level), still capped at what the species can reach.
+    loc = getattr(_PICK_LOC, "value", None)
+    if pid and loc and not c.get("allow_overcap"):
+        try:
+            import weather as _w
+            if _w.is_boosted(pid, loc[0], loc[1]):
+                v = int(v * (1 + _cfg.get("weather", "cp_boost_percent", cast=float) / 100.0))
+                if _cfg.get("spawns", "cap_cp_to_species", cast=bool):
+                    cap = int(_max_reachable_cp(pid))
+                    if cap > 0:
+                        v = min(v, cap)
+        except Exception:
+            pass
+    return v
 # Wild Pokemon rotate on a fixed clock: every SPAWN_WINDOW_MIN minutes the whole
 # map re-rolls. Spawn ids/species are seeded from (cell, window), so a spawn lasts
 # exactly one window and then a fresh set appears -- and a Pokemon you caught can
@@ -3823,6 +4123,12 @@ def _config_generation():
     except Exception:
         pass
     return gen
+
+
+def _stable_hash(s):
+    """A hash that is the same after a restart (Python's hash() of a str is not)."""
+    import zlib
+    return zlib.crc32(str(s).encode("utf-8")) * 0x9E3779B1 & ((1 << 62) - 1)
 
 
 def _window(now_ms):
@@ -4047,7 +4353,47 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
             lst.append(build_nearby_pokemon(pid, d, eid))
 
     w = pb.Writer()
+    # 2016 timing: pick ONE set of stop spawns for the whole refresh, earliest
+    # appearance first, up to the cap. Choosing per stop in map order made spawns
+    # blink in and out whenever a new one appeared nearer the front of the list;
+    # this way a Pokemon on screen stays until it despawns and newcomers take slots
+    # that free up. (Must mirror the per-stop loop's RNG draws exactly.)
+    _stop_pick = None
+    _stops_here = False
+    if (_proc_spawns and _cfg.get("spawns", "realistic_2016", cast=bool)
+            and _cfg.get("spawns", "hourly_spawn_points", cast=bool)):
+        _ps = max(0, _cfg.get("spawns", "per_stop", cast=int))
+        # Crowded areas have far more spawn points than the map cap can show. About
+        # a quarter of points are up at any moment, so keep just enough of them that
+        # the ones up fit the cap -- then each spawn is visible for its whole 15
+        # minutes instead of only once older ones free a slot. Which points survive
+        # is fixed per point (by hash), so a spot you've learned stays a spot.
+        _n_points = sum(1 for _c in cells for _sf in _placed_forts.get(_c, [])
+                        if _sf.get("kind") != "gym") * _ps
+        _keep = min(1.0, (0.85 * MAX_WILD * 4.0) / max(1, _n_points))
+        _stops_here = _n_points > 0
+        _all_up = []
+        for _c in cells:
+            for _sf in _placed_forts.get(_c, []):
+                if _sf.get("kind") == "gym":
+                    continue
+                for k in range(_ps):
+                    if ((_stable_hash(_sf["id"]) ^ (k * 0x632BE5AB)) % 10000) / 10000.0 >= _keep:
+                        continue                          # thinned out in a crowded area
+                    _ploc = _random.Random((_stable_hash(_sf["id"]) ^ (k * 0x2545F491)
+                                            ^ 0x570F5) & 0x7FFFFFFF)
+                    _ploc.uniform(-0.4, 0.4)
+                    _ploc.random()
+                    _off = int(_ploc.random() * 3_600_000)
+                    _since = (now - _off) % 3_600_000
+                    if _since < 15 * 60_000:
+                        _all_up.append((now - _since, _stable_hash(_sf["id"]) ^ k,
+                                        _sf["id"], k))
+        _all_up.sort()
+        _stop_pick = {(sid, k) for _t, _h, sid, k in _all_up[:MAX_WILD]}
+
     spawned = forts_n = wild_n = 0
+    _l17_n = 0
     for cid in cells:
         catch, forts, wild, spawns, nearby = [], [], [], [], []
         ctr = _cell_center(cid)
@@ -4058,31 +4404,56 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
         _per_stop = max(0, _cfg.get("spawns", "per_stop", cast=int))
         if _proc_spawns and _per_stop:
             for _sf in _placed_forts.get(cid, []):
-                if wild_n >= MAX_WILD:
+                if wild_n >= MAX_WILD and _stop_pick is None:
                     break
                 if _sf.get("kind") == "gym":
                     continue
                 _sla, _sln = _sf["lat"], _sf["lng"]
+                _stimed = (_cfg.get("spawns", "realistic_2016", cast=bool)
+                           and _cfg.get("spawns", "hourly_spawn_points", cast=bool))
+                # Gather every spawn that's up around this stop first, then show the
+                # ones that appeared EARLIEST. With the map capped, taking them in a
+                # fixed order made spawns blink in and out as others came and went;
+                # oldest-first means a Pokemon on screen keeps its place until it
+                # despawns, and newcomers only fill slots that free up.
+                _cands = []
                 for k in range(_per_stop):
-                    if wild_n >= MAX_WILD:
-                        break
-                    r = _random.Random((hash(_sf["id"]) ^ (_win * 0x9E3779B1)
-                                        ^ (k * 0x2545F491) ^ 0x570F5) & 0x7FFFFFFF)
-                    ang = 2 * _math.pi * k / _per_stop + r.uniform(-0.4, 0.4)
-                    dist = 15.0 + r.random() * 45.0        # 15-60m: the stop's general area
+                    _ploc = _random.Random((_stable_hash(_sf["id"]) ^ (k * 0x2545F491)
+                                            ^ 0x570F5) & 0x7FFFFFFF)
+                    ang = 2 * _math.pi * k / _per_stop + _ploc.uniform(-0.4, 0.4)
+                    dist = 15.0 + _ploc.random() * 45.0    # 15-60m: the stop's general area
                     dl = _sla + (dist * _math.cos(ang)) / 111320.0
                     dn = _sln + (dist * _math.sin(ang)) / (
                         111320.0 * max(0.2, _math.cos(_math.radians(_sla))))
-                    eid = (hash(_sf["id"]) ^ (k * 0x9E3779B1) ^ (_win * 0x85EBCA6B)
+                    if _stimed:
+                        _off = int(_ploc.random() * 3_600_000)       # its minute of the hour
+                        _since = (now - _off) % 3_600_000
+                        if _since >= 15 * 60_000:
+                            continue                                  # not up right now
+                        _slot = (now - _off) // 3_600_000
+                        _p_expire = now - _since + 15 * 60_000
+                    else:
+                        _slot, _p_expire = _win, expire
+                    _cands.append((_p_expire, k, dl, dn, _slot))
+                _cands.sort()
+                for _p_expire, k, dl, dn, _slot in _cands:
+                    if wild_n >= MAX_WILD and _stop_pick is None:
+                        break                           # (picked ones already fit the cap)
+                    if _stop_pick is not None and (_sf["id"], k) not in _stop_pick:
+                        continue                         # didn't make this refresh's cut
+                    r = _random.Random((_stable_hash(_sf["id"]) ^ (_slot * 0x9E3779B1)
+                                        ^ (k * 0x2545F491) ^ 0x570F5) & 0x7FFFFFFF)
+                    eid = (_stable_hash(_sf["id"]) ^ (k * 0x9E3779B1) ^ (_slot * 0x85EBCA6B)
                            ^ 0x570F5) & ((1 << 62) - 1)
                     if _world.is_despawned(eid):
                         continue
                     pid = _pick_species(r, _ev, dl, dn)
                     cp = _pick_cp(r, _ev, pid)
                     sid = _hex_id((_sf["id"], "s", k), 11)
-                    wild.append(build_wild_pokemon(eid, dl, dn, sid, pid, now, SPAWN_MS, cp=cp))
-                    catch.append(build_map_pokemon(sid, eid, pid, dl, dn, expire))
-                    _world.remember_spawn(eid, pid, dl, dn, cp, sid, expire)
+                    wild.append(build_wild_pokemon(eid, dl, dn, sid, pid, now,
+                                                   max(1000, _p_expire - now), cp=cp))
+                    catch.append(build_map_pokemon(sid, eid, pid, dl, dn, _p_expire))
+                    _world.remember_spawn(eid, pid, dl, dn, cp, sid, _p_expire)
                     spawns.append(build_spawn_point(dl, dn))
                     _sight(nearby, pid, dl, dn, eid)
                     wild_n += 1
@@ -4091,39 +4462,70 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
             # than one at the level-15 centre. Seeded per (l17 cell, index, window)
             # so the map is stable for the whole window and re-rolls with it.
             _kids = _l17_centres(cid)
-            for k in range(_budget.get(cid, 0)):
-                if wild_n >= MAX_WILD or not _kids:
+            # 2016 spawn timing (spawns.hourly_spawn_points): every spawn point has its
+            # own fixed minute of the hour, appears then, and stays for 15 minutes --
+            # instead of the whole map re-rolling together. Only ~1 in 4 points is up
+            # at any moment, so walk up to 4x as many points to keep the map as busy.
+            _timed = (_cfg.get("spawns", "realistic_2016", cast=bool)
+                      and _cfg.get("spawns", "hourly_spawn_points", cast=bool))
+            _want = _budget.get(cid, 0)
+            # With 2016 timing, stops carry the map wherever there are any (their
+            # spawns are picked globally, oldest first); this random field only fills
+            # stop-less areas, so the two never fight over the cap.
+            if _timed and _stops_here:
+                _want = 0
+            _got = 0
+            _field = []
+            for k in range(_want * 4 if _timed else _want):
+                if not _kids:
                     break
                 # Spread them over the level-15 cell by walking its level-17
                 # children in turn, then jittering inside whichever one we land on.
                 _kid, _clat, _clng = _kids[k % len(_kids)]
-                seed = (_kid ^ (_win * 0x9E3779B97F4A7C15)
-                        ^ (k * 0x2545F4914F6CDD1D)) & ((1 << 63) - 1)
+                # The spawn point's LOCATION is seeded WITHOUT the window, so the
+                # spot stays put and only the species/CP rotate -- real 2016 spawn
+                # points you can learn. (Scatter inside the ~75m level-17 cell.)
+                loc = _random.Random((_kid ^ (k * 0x2545F4914F6CDD1D))
+                                     & ((1 << 63) - 1))
+                jl = _clat + (loc.random() - 0.5) * 0.00060
+                jn = _clng + (loc.random() - 0.5) * 0.00060
+                if _timed:
+                    _off = int(loc.random() * 3_600_000)          # this point's minute
+                    _since = (now - _off) % 3_600_000             # since it last appeared
+                    if _since >= 15 * 60_000:
+                        continue                                   # not up right now
+                    _appear = (now - _off) // 3_600_000            # which appearance
+                    seed = (_kid ^ (_appear * 0x9E3779B97F4A7C15)
+                            ^ (k * 0x2545F4914F6CDD1D)) & ((1 << 63) - 1)
+                    _p_expire = now - _since + 15 * 60_000
+                else:
+                    seed = (_kid ^ (_win * 0x9E3779B97F4A7C15)
+                            ^ (k * 0x2545F4914F6CDD1D)) & ((1 << 63) - 1)
+                    _p_expire = expire
+                _field.append((_p_expire, k, _kid, _clat, _clng, jl, jn, seed))
+            _field.sort()                  # oldest first: nothing on screen gets bumped
+            for _p_expire, k, _kid, _clat, _clng, jl, jn, seed in _field:
+                if wild_n >= MAX_WILD or _got >= _want:
+                    break
                 rnd = _random.Random(seed)
                 pid = _pick_species(rnd, _ev, _clat, _clng)
                 eid = (seed ^ 0x5BD1E995ABCD) & ((1 << 63) - 1)
                 sid = _hex_id((_kid, k), 11)
                 _cp = _pick_cp(rnd, _ev, pid)
-                # The spawn point's LOCATION is seeded WITHOUT the window, so the
-                # spot stays put every window and only the species/CP rotate --
-                # real 2016 spawn points you can learn, not a spot that hops each
-                # refresh. (Scatter inside the ~75m level-17 cell so they don't sit
-                # in a visible grid.)
-                loc = _random.Random((_kid ^ (k * 0x2545F4914F6CDD1D))
-                                     & ((1 << 63) - 1))
-                jl = _clat + (loc.random() - 0.5) * 0.00060
-                jn = _clng + (loc.random() - 0.5) * 0.00060
-                # skip it if it was already caught during this window, otherwise
+                # skip it if it was already caught during this appearance, otherwise
                 # the next map refresh hands the same Pokemon straight back
                 if _world.is_despawned(eid):
                     continue
+                _left = max(1000, _p_expire - now)
                 wild.append(build_wild_pokemon(eid, jl, jn, sid, pid, now,
-                                               SPAWN_MS, cp=_cp))
-                catch.append(build_map_pokemon(sid, eid, pid, jl, jn, expire))
-                _world.remember_spawn(eid, pid, jl, jn, _cp, sid, expire)
+                                               _left, cp=_cp))
+                catch.append(build_map_pokemon(sid, eid, pid, jl, jn, _p_expire))
+                _world.remember_spawn(eid, pid, jl, jn, _cp, sid, _p_expire)
                 spawns.append(build_spawn_point(jl, jn))
                 _sight(nearby, pid, jl, jn, eid)
                 wild_n += 1
+                _got += 1
+                _l17_n += 1
         if cid == player_cell and _proc_spawns:
             # a cluster of wild Pokemon right around the trainer (spread within ~65m)
             # so there are always plenty in view no matter which way you look
