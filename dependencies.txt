@@ -6,7 +6,7 @@ customtkinter
 threading
 mariadb
 pathlib
-
+osmium
 
 PATCHER:
 - Java installed
