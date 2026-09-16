@@ -130,7 +130,7 @@ The server is a proper Python package under `src/server/windstock/`, split by co
 | 🛍️ Shop / Help / Site | `src/server/windstock/game/shop.py`, `src/server/windstock/web/helpcenter.py`, `src/server/windstock/web/website.py` | In-game store, support pages, status site |
 | 🧭 World Manager | `src/server/windstock/web/webui.py`, `src/server/windstock/web/admin.py` | Local web UI for stops, gyms, events and POIs |
 | 🗂️ Paths / config | `src/server/windstock/config/paths.py` | Single source of truth for data + bundled-resource locations |
-| 🚀 Launcher | `src/server/run.py`, `src/server/windstock/__main__.py` | Runs the DNS redirector and game server (plus bridges) in one process |
+| 🚀 Launcher | `src/server/__main__.py`, `src/server/windstock/__main__.py` | Runs the DNS redirector and game server (plus bridges) in one process |
 | ⌨️ Slash console | `src/server/windstock/cli/console.py` | The World Manager, typed (`/help`, `/default`, ...) |
 | 🪟 Server window | `src/server/windstock/ui/pogo_manager.py` | Desktop status/control window |
 | 🧪 Game master converter | `src/tools/convert_gm.py` | Rebuilds the 2016 GAME_MASTER into 0.29 item templates |
@@ -166,14 +166,14 @@ py windstock/tools/gen_certs.py       # or: py -m windstock.tools.gen_certs
 **2 · Start the server:**
 
 ```bash
-py run.py
+py __main__.py
 ```
 
-`run.py` detects this PC's LAN IP and starts the DNS redirector and the game server. Pass an
+`__main__.py` detects this PC's LAN IP and starts the DNS redirector and the game server. Pass an
 IP to use a specific one, such as a Tailscale address:
 
 ```bash
-py run.py 100.x.y.z
+py __main__.py 100.x.y.z
 ```
 
 You can also run the directory directly — `py src/server` — which executes its `__main__.py`.
@@ -254,7 +254,7 @@ Reverse engineering the client took a long time, and thanks to `chucny` and `bra
 ## 🗂️ Repository layout
 
 ```
-src/server/            launcher (run.py) + data, assets, certs, docs
+src/server/            launcher (__main__.py) + data, assets, certs, docs
 src/server/windstock/  the server package (config, game, geo, net, web, cli, ui, tools)
 src/tools/     game-master conversion + reverse-engineering scripts
 src/patcher/   APK patcher GUI (certificate-pinning removal)
