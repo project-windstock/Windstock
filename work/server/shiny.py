@@ -32,10 +32,13 @@ ENCOUNTER_TTL_S = 180    # an encounter nobody finished stops counting after thi
 
 
 def species_with_models():
-    """Pokemon numbers that have a shiny bundle available for iPhone."""
+    """Pokemon numbers that have a shiny bundle -- on either platform, since a phone only
+    ever downloads its own (assets_ios/extra_digest.json, assets/extra_digest.json)."""
+    names = []
     try:
         import protocol as P
-        names = P._extra_digest("ios").keys()
+        for platform in ("ios", "android"):
+            names += list(P._extra_digest(platform).keys())
     except Exception:
         return set()
     out = set()

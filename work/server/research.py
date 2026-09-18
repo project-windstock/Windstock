@@ -719,6 +719,88 @@ def overview():
             "items": {str(k): v[0] for k, v in ITEMS.items()}}
 
 
+# ------------------------------------------------------------------ all events
+def _preset_bonuses(cfg):
+    """Short "what's on" lines for an event card, from its preset/config."""
+    out = []
+    if not isinstance(cfg, dict):
+        return out
+    mode = cfg.get("species_mode")
+    if mode and mode != "all":
+        out.append(str(mode).replace("_", " ").title() + " spawns")
+    if cfg.get("spawn_density", 0) and int(cfg["spawn_density"]) > 5:
+        out.append("More Pokémon everywhere")
+    if float(cfg.get("shiny_rate", 0) or 0) > 0:
+        out.append("Increased Shiny chance")
+    if cfg.get("max_cp", 0) and int(cfg["max_cp"]) > 1500:
+        out.append("Higher CP")
+    return out[:4]
+
+
+def _event_windows(row, now=None, ahead_days=14):
+    """When this scheduled row runs next (or is running), as (start_ms, end_ms)."""
+    now = now or time.time()
+    try:
+        import events as EV
+        sh, sm = [int(x) for x in str(row.get("start", "00:00")).split(":")[:2]]
+        eh, em = [int(x) for x in str(row.get("end", "23:59")).split(":")[:2]]
+    except Exception:
+        return []
+    out = []
+    for day in range(-1, ahead_days):
+        t = time.localtime(now + day * 86400)
+        date = time.strftime("%Y-%m-%d", t)
+        if row.get("days") and t.tm_wday not in row["days"]:
+            continue
+        if row.get("from") and date < row["from"]:
+            continue
+        if row.get("to") and date > row["to"]:
+            continue
+        base = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+        start = base + sh * 3600 + sm * 60
+        end = base + eh * 3600 + em * 60
+        if end <= start:
+            end += 86400                     # a window that runs past midnight
+        if end > now:
+            out.append((int(start * 1000), int(end * 1000)))
+        if len(out) >= 3:
+            break
+    return out
+
+
+def events_view():
+    """Everything the phone's All Events screen shows: what's on now, what's next, and
+    any Timed Research that is running or scheduled."""
+    now_ms = int(time.time() * 1000)
+    rows = []
+    try:
+        import events as EV
+        presets = EV.PRESETS
+        for row in EV.schedule():
+            if not row.get("enabled", True):
+                continue
+            cfg = row.get("cfg") if isinstance(row.get("cfg"), dict) else presets.get(row.get("preset"))
+            for start, end in _event_windows(row):
+                rows.append({"title": row.get("name", "Event"), "kind": "event",
+                             "preset": row.get("preset", ""), "starts_ms": start, "ends_ms": end,
+                             "bonuses": _preset_bonuses(cfg),
+                             "active": start <= now_ms < end})
+    except Exception:
+        pass
+    cfg = load_config()
+    for s in cfg.get("timed") or []:
+        if not s.get("steps"):
+            continue
+        rows.append({"title": s.get("title", "Timed Research"), "kind": "research",
+                     "starts_ms": int(s.get("starts_ms", 0) or 0),
+                     "ends_ms": int(s.get("ends_ms", 0) or 0),
+                     "bonuses": ["Timed Research"],
+                     "active": _timed_live(s, now_ms)})
+    rows.sort(key=lambda r: (not r["active"], r["starts_ms"]))
+    return {"server_ms": now_ms, "now": [r for r in rows if r["active"]],
+            "soon": [r for r in rows if not r["active"]]}
+
+
 # ------------------------------------------------------------------- HTTP (phone)
 def _json(obj, status=200):
     return status, {"Content-Type": "application/json", "Cache-Control": "no-store"}, \
@@ -726,8 +808,9 @@ def _json(obj, status=200):
 
 
 def _png(path):
+    kind = "image/jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "image/png"
     with open(path, "rb") as fh:
-        return 200, {"Content-Type": "image/png", "Cache-Control": "max-age=86400"}, fh.read()
+        return 200, {"Content-Type": kind, "Cache-Control": "max-age=86400"}, fh.read()
 
 
 def _pokemon_icon(n):
@@ -774,6 +857,8 @@ def handle(method, path, query, headers, body, log, ip=None):
     if rest == "ping":
         n = _notify.get(user) or {"seq": 0, "count": 0}
         return _json({"seq": n["seq"], "count": n["count"]})
+    if rest == "events":
+        return _json(events_view())
     if rest in ("", "state"):
         return _json(state(user))
     if rest == "claim" and method == "POST":
