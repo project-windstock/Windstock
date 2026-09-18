@@ -21,7 +21,7 @@ _HEAD = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     </svg></div>
     <div class="word"><h1>Bracky</h1><small>World Manager</small></div>
   </div>
-  <nav class="topnav"><a href="/">Manager</a><a class="active" href="/downloads">World Data</a><a href="/soundpacks">Sound Packs</a></nav>
+  <nav class="topnav"><a href="/">Manager</a><a class="active" href="/downloads">World Data</a><a href="/soundpacks">Sound Packs</a><a href="/research">Research</a></nav>
   <div class="spacer"></div>
   <div class="meta">Forts in world <b id="forts">&hellip;</b></div>
 </header>

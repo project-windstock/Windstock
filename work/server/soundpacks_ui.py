@@ -47,7 +47,7 @@ PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     </svg></div>
     <div class="word"><h1>Bracky</h1><small>World Manager</small></div>
   </div>
-  <nav class="topnav"><a href="/">Manager</a><a href="/downloads">World Data</a><a class="active" href="/soundpacks">Sound Packs</a></nav>
+  <nav class="topnav"><a href="/">Manager</a><a href="/downloads">World Data</a><a class="active" href="/soundpacks">Sound Packs</a><a href="/research">Research</a></nav>
   <div class="spacer"></div>
   <div class="meta">Packs <b id="npacks">&hellip;</b></div>
 </header>

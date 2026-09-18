@@ -27,6 +27,9 @@ PORT = int(os.environ.get("PORT", "443"))
 BIND = os.environ.get("BIND", "0.0.0.0")
 
 
+_QUIET = {"/research/ping", "/research/state", "/shiny/state"}
+
+
 def log(msg):
     ts = datetime.datetime.now().strftime("%H:%M:%S")
     for line in str(msg).splitlines() or [""]:
@@ -51,7 +54,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # Log every non-RPC request. When a login "just fails", this is the
             # difference between knowing the client reached us and guessing.
-            if not path.startswith("/plfe"):
+            # (the tweak's background polls are left out -- they arrive every few seconds)
+            if not path.startswith("/plfe") and path not in _QUIET:
                 log(f"[http] {method} https://{host}{path}"
                     + (f"?{query}" if query else ""))
             if bracky_site.owns(path):
@@ -81,6 +85,16 @@ class Handler(BaseHTTPRequestHandler):
             elif "pokemon.com" in host:
                 status, headers, out = sso.handle(method, path, query,
                                                   self.headers, body, log)
+            elif path.startswith("/shiny/"):
+                # The windstock tweak asking whether what's on screen is shiny.
+                import shiny
+                status, headers, out = shiny.handle(method, path, query, self.headers,
+                                                    body, log, self.client_address[0])
+            elif path.startswith("/research"):
+                # The windstock tweak's Research screens (binoculars button on the map).
+                import research
+                status, headers, out = research.handle(method, path, query, self.headers,
+                                                       body, log, self.client_address[0])
             elif path.startswith("/soundpacks/"):
                 # The windstock tweak's "Download packs from server".
                 import soundpacks

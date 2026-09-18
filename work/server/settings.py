@@ -261,6 +261,10 @@ DEFAULTS = {
         "raid_seconds": 180.0,
         "countdown_seconds": 10.0,
     },
+    "shiny": {
+        "enabled": True,
+        "rate": 0.0022,             # ~1 in 450, the real game's base shiny rate
+    },
     "shop": {
         "price_multiplier": 1.0,    # 0.5 = half price, 2.0 = double
     },
@@ -495,6 +499,11 @@ _README = [
     "   raid_seconds ......... raid timer shown on the raid screen; when it runs out",
     "                          the raid fails and the boss heals to full",
     "   countdown_seconds .... lobby countdown after someone presses Start",
+    "",
+    "shiny:  (shiny Pokemon -- only species with a shiny model, see make_shiny_bundle.py)",
+    "   enabled .............. false = no shinies",
+    "   rate ................. chance a spawn is shiny (0.0022 = ~1 in 450). Decided ONCE",
+    "                          per spawn, so re-tapping or re-finding it never rerolls",
     "",
     "shop:",
     "   price_multiplier ..... scales every price in the in-game shop",

@@ -71,6 +71,15 @@ def _envelope_latlng(fields):
             struct.unpack("<d", struct.pack("<Q", lo))[0])
 
 
+def _research(username, kind, n=1, **ctx):
+    """Count something toward Field / Special / Timed Research (research.py)."""
+    try:
+        import research
+        research.event(username, kind, n, **ctx)
+    except Exception as e:
+        print(f"   [research] event {kind} failed: {e}", flush=True)
+
+
 def _mon(uid):
     """'#25 CP312' for one of the current trainer's Pokemon (for the log)."""
     try:
@@ -176,6 +185,8 @@ def _build_returns(reqs, username, log):
                     log(f"      [gymdbg] dump failed: {_e}")
             d = pb.decode(r); res = pb.get(d, 1, pb.WT_VARINT)
             bid = pb.get(d, 4, pb.WT_LEN)
+            if res == 1 and bid:
+                _research(username, "battle")
             import world
             b = world.BATTLES.get(bid.decode()) if bid else None
             log("      -> gym battle START: " +
@@ -263,6 +274,8 @@ def _build_returns(reqs, username, log):
             r = P.build_use_item_capture_response(iid, eid)
             returns.append(r)
             ok = pb.get(pb.decode(r), 1, pb.WT_VARINT)
+            if ok:
+                _research(username, "berry")
             log(f"      -> USE_ITEM_CAPTURE item={iid} encounter={eid} -> " +
                 ("Razz Berry used, next ball is much likelier to hold"
                  if ok else "couldn't use that item"))
@@ -308,6 +321,7 @@ def _build_returns(reqs, username, log):
         elif rtype == P.RT.GET_HATCHED_EGGS:
             import world
             for h in world.check_hatches(P.hatch_species):
+                _research(username, "hatch", pokemon_id=h["pokemon_id"])
                 log(f"   [egg] a {h['km']:g} km egg hatched into #{h['pokemon_id']} "
                     f"CP{h['cp']} (+{h['xp']} XP, +{h['candy']} candy, "
                     f"+{h['stardust']} stardust)")
@@ -342,6 +356,8 @@ def _build_returns(reqs, username, log):
             r = P.build_release_response(uid)
             returns.append(r)
             res = pb.get(pb.decode(r), 1, pb.WT_VARINT)
+            if res == 1:
+                _research(username, "transfer")
             log(f"      -> RELEASE_POKEMON {uid} {was} -> " +
                 {1: "transferred (+1 candy)", 2: "REFUSED: it's at a gym",
                  3: "FAILED"}.get(res, str(res)))
@@ -350,6 +366,8 @@ def _build_returns(reqs, username, log):
             r = P.build_upgrade_response(uid)
             returns.append(r)
             res = pb.get(pb.decode(r), 1, pb.WT_VARINT)
+            if res == 1:
+                _research(username, "power_up")
             log(f"      -> UPGRADE_POKEMON {uid} {_mon(uid)} -> " +
                 {1: "powered up", 2: "not found", 3: "not enough candy/stardust",
                  5: "it's at a gym"}.get(res, str(res)))
@@ -359,6 +377,11 @@ def _build_returns(reqs, username, log):
             r = P.build_evolve_response(uid)
             returns.append(r)
             d = pb.decode(r); res = pb.get(d, 1, pb.WT_VARINT)
+            if res == 1:
+                try:
+                    _research(username, "evolve", pokemon_id=int(was.split()[0][1:]) if was else 0)
+                except ValueError:
+                    _research(username, "evolve")
             log(f"      -> EVOLVE_POKEMON {uid} {was} -> " +
                 {1: f"evolved! +{pb.get(d,3,pb.WT_VARINT)} xp", 2: "missing",
                  3: "not enough candy", 4: "cannot evolve",
@@ -414,6 +437,8 @@ def _build_returns(reqs, username, log):
                     got.append(f"item{pb.get(ad, 1, pb.WT_VARINT)}"
                                f"x{pb.get(ad, 2, pb.WT_VARINT) or 1}")
             res = pb.get(d, 1, pb.WT_VARINT)
+            if res == 1:
+                _research(username, "spin")
             log(f"      -> FORT_SEARCH {fid!r} "
                 + (f"got [{' '.join(got)}] +{pb.get(d, 5, pb.WT_VARINT) or 0}xp"
                    if res == 1 else "BAG FULL" if res == 4 else f"result {res}"))
@@ -422,6 +447,10 @@ def _build_returns(reqs, username, log):
             returns.append(P.build_encounter_response(eid, int(time.time() * 1000)))
             import world
             s = world.get_spawn(eid)
+            if s:
+                import shiny as _shiny
+                if _shiny.note_encounter(username, eid, s["pokemon_id"]):
+                    log(f"      *** SHINY #{s['pokemon_id']} (encounter {eid}) ***")
             log(f"      -> ENCOUNTER {eid} -> " +
                 (f"pokemon #{s['pokemon_id']} cp{s['cp']} (catch screen)"
                  if s else "NOT_FOUND (unknown spawn)"))
@@ -433,11 +462,29 @@ def _build_returns(reqs, username, log):
             _sp = _w.get_spawn(eid)
             returns.append(P.build_catch_pokemon_response(
                 eid, ball, hit, int(time.time() * 1000), reticle, spin, hitpos))
+            try:
+                _st = pb.get(pb.decode(returns[-1]), 1, pb.WT_VARINT)
+                if _st in (1, 3):                   # caught or fled: the encounter is over
+                    import shiny as _shiny
+                    _shiny.end_encounter(username)
+            except Exception:
+                pass
             b = P.throw_bonus(reticle, spin, hitpos)
             _cr = pb.decode(returns[-1])
             st = pb.get(_cr, 1, pb.WT_VARINT)
             # The Journal lists catches and Pokemon that ran away (not break-outs
             # or misses, which the encounter simply continues after).
+            if _sp and st == 1:
+                _pid = int(_sp["pokemon_id"])
+                _research(username, "catch", pokemon_id=_pid)
+            if _sp and hit and st in (1, 2, 3):          # the game counts throws that land
+                if b:
+                    _research(username, "throw", throw=b[1])
+                try:
+                    if spin and spin >= P._threshold("spin_bonus_threshold", P.ENC_SPIN_BONUS, 0.5):
+                        _research(username, "curveball")
+                except Exception:
+                    pass
             if _sp and st in (1, 3):
                 _w.log_action({"kind": "catch", "result": 1 if st == 1 else 2,
                                "pokemon_id": int(_sp["pokemon_id"]),

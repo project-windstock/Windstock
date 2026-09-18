@@ -76,7 +76,7 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
     </svg></div>
     <div class="word"><h1>Bracky</h1><small>World Manager</small></div>
   </div>
-  <nav class="topnav"><a class="active" href="/">Manager</a><a href="/downloads">World Data</a><a href="/soundpacks">Sound Packs</a></nav>
+  <nav class="topnav"><a class="active" href="/">Manager</a><a href="/downloads">World Data</a><a href="/soundpacks">Sound Packs</a><a href="/research">Research</a></nav>
   <div class="spacer"></div>
   <div class="pill" id="status">Running</div>
   <div class="meta">
@@ -487,6 +487,9 @@ class _Handler(BaseHTTPRequestHandler):
                                   .replace("__DEX__", json.dumps(DEX))
                                   .replace("__GIVEABLE__", json.dumps(GIVEABLE)))
 
+        if p == "/research":
+            import research_ui
+            return self._send(200, "text/html; charset=utf-8", research_ui.page())
         if p == "/soundpacks":
             import soundpacks_ui
             return self._send(200, "text/html; charset=utf-8", soundpacks_ui.page())
@@ -543,6 +546,11 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             d = {}
         try:
+            if p.startswith("/api/research"):
+                import research_ui
+                out = research_ui.api(p, d)
+                if out is not None:
+                    return self._json(out)
             if p in ("/api/sp/create", "/api/sp/delete", "/api/sp/rename", "/api/sp/remove"):
                 import soundpacks as SP
                 if p == "/api/sp/create":

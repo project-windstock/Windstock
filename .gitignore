@@ -116,3 +116,7 @@ work/server/photos/
 *.bak-*
 *.log
 sideloadlydaemon.log
+
+#  Research art + the game font pulled from the client (Niantic copyright; the
+#  server downloads/extracts them itself -- see research.py)
+work/server/research_art/

@@ -740,6 +740,37 @@ def _raw_digest_bytes(platform="android"):
     return _RAW_DIGEST_BYTES[platform]
 
 
+def _extra_digest(platform="android"):
+    """Bundles we built ourselves (e.g. shiny pm0025_s from tools/make_shiny_bundle.py),
+    listed in <assets>/extra_digest.json -> {bundle_name: entry}. Re-read on change."""
+    path = os.path.join(assets_dir(platform), "extra_digest.json")
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return {}
+    hit = _EXTRA_DIGEST.get(platform)
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        import json as _json
+        with open(path, encoding="utf-8") as fh:
+            raw = _json.load(fh)
+        out = {}
+        for name, e in raw.items():
+            if os.path.isfile(os.path.join(assets_dir(platform), name)):
+                out[name] = {"asset_id": e["asset_id"], "version": int(e["version"]),
+                             "checksum": int(e["checksum"]), "size": int(e["size"]),
+                             "key": bytes.fromhex(e["key"])}
+    except Exception:
+        out = {}
+    _EXTRA_DIGEST[platform] = (mt, out)
+    _REAL_DIGEST.pop(platform, None)          # merged view must pick the change up
+    return out
+
+
+_EXTRA_DIGEST = {}
+
+
 def digest_timestamp(platform="android"):
     """The digest's OWN timestamp (field 2). DOWNLOAD_REMOTE_CONFIG_VERSION must
     advertise exactly this value as asset_digest_timestamp_ms, or the client never
@@ -754,6 +785,11 @@ def digest_timestamp(platform="android"):
     if platform not in _DIGEST_TS:
         raw = _raw_digest_bytes(platform)
         _DIGEST_TS[platform] = (pb.get(pb.decode(raw), 2, pb.WT_VARINT) or 0) if raw else 0
+    extras = _extra_digest(platform)
+    if extras:
+        # Our own bundles (shinies) ride on the genuine digest; bump its timestamp past
+        # them so a phone holding the older cached list downloads the new one.
+        return max(_DIGEST_TS[platform], max(e["version"] for e in extras.values()))
     return _DIGEST_TS[platform]
 
 
@@ -762,6 +798,7 @@ def _load_real_digest(platform="android"):
     size, key}}. Fields per the 0.29 AssetDigestEntry contract: asset_id=1,
     bundle_name=2, version=3, checksum=4 (fixed32 CRC32 of the DECRYPTED bundle),
     size=5 (encrypted size on the wire), key=6 (16-byte AES key)."""
+    _extra_digest(platform)                   # refreshes the cache if extras changed
     if platform in _REAL_DIGEST:
         return _REAL_DIGEST[platform]
     out = _REAL_DIGEST[platform] = {}
@@ -787,6 +824,7 @@ def _load_real_digest(platform="android"):
             "size":     pb.get(e, 5, pb.WT_VARINT) or 0,
             "key":      key if isinstance(key, bytes) else b"",
         }
+    out.update(_extra_digest(platform))
     return out
 
 
@@ -871,7 +909,15 @@ def build_get_asset_digest_response(platform="android") -> bytes:
     raw = _raw_digest_bytes(platform)
     if raw and not PLAIN_ASSETS:
         # repeated fields may appear anywhere, so appending is safe
-        return raw + pb.Writer().uint(3, 1).to_bytes()           # result = SUCCESS
+        tail = pb.Writer()
+        extras = _extra_digest(platform)
+        for name, e in extras.items():
+            tail.message(1, build_asset_digest_entry(
+                e["asset_id"], name, version=e["version"], checksum=e["checksum"],
+                size=e["size"], key=e["key"]))
+        if extras:
+            tail.uint(2, digest_timestamp(platform))            # last value wins
+        return raw + tail.uint(3, 1).to_bytes()                 # result = SUCCESS
 
     w = pb.Writer()
     entries = _our_bundles(platform)
@@ -2142,8 +2188,10 @@ def build_catch_pokemon_response(encounter_id, pokeball, hit, now_ms,
             s2sphere.LatLng.from_degrees(s["lat"], s["lng"])).parent(15).id()
     except Exception:
         _cell = 0
+    import shiny as _shiny
+    _extra = {"shiny": True} if _shiny.is_shiny(encounter_id, s["pokemon_id"]) else {}
     world.add_caught(uid, s["pokemon_id"], s["cp"], pokeball=int(pokeball),
-                     cell=int(_cell))
+                     cell=int(_cell), **_extra)
     world.pokedex_caught(s["pokemon_id"])
     _score_medals(s["pokemon_id"], uid)
     world.remove_spawn(encounter_id)                      # it's ours now; clear the map
