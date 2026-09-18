@@ -119,6 +119,10 @@ DEFAULTS = {
         "let_players_choose": True,
         "team": 1,                     # the auto-assigned team when choosing is off
         "defender_minutes": 15,
+        # Damage a gym defender takes STICKS between attacks, so a strong gym can
+        # be worn down over several fights. This is how long a defender takes to
+        # heal back to full if it is left alone (0 = never heals).
+        "defender_heal_minutes": 30,
         "defender_coins": 20,
         "max_defenders": 6,
         # The Shop's shield ("defender bonus"): what you collect per gym you're
@@ -409,6 +413,9 @@ _README = [
     "gyms:",
     "   team ................. your team: 1=Blue, 2=Red, 3=Yellow",
     "   defender_minutes ..... how long a Pokemon guards before coming home",
+    "   defender_heal_minutes  battle damage on a defender STICKS between",
+    "                          attacks; this is how long it takes to heal back",
+    "                          to full when left alone (0 = it never heals).",
     "   defender_coins ....... PokeCoins paid when it returns",
     "   max_defenders ........ how many Pokemon fit in one gym",
     "   defender_bonus_coins/stardust  Shop shield payout per gym held",

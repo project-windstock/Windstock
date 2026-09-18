@@ -1814,9 +1814,51 @@ def deploy(fort_id, uid, trainer=None, team=None):
             return False, "gym full"
         members.append({"uid": uid, "pokemon_id": c["pokemon_id"], "cp": c["cp"],
                         "trainer": trainer, "team": team, "owner": p.username,
+                        # A defender walks in with the health it has, and keeps
+                        # whatever an attacker knocks off it (see set_gym_hp).
+                        "stamina": c.get("stamina"),
                         "deployed_ms": int(time.time() * 1000)})
     save_gyms()
     return True, "ok"
+
+
+def set_gym_hp(fort_id, uid, hp):
+    """Remember how battered a defender is.
+
+    Gym HP used to live only inside one battle, so backing out and attacking again
+    faced defenders restored to full -- a gym could not be worn down over several
+    fights. The damage is stored on the member and saved with the gym (it heals
+    back over gyms.defender_heal_minutes, see protocol._defender_hp), and the
+    owner's own copy of the Pokemon is kept in step so the Pokemon list draws the
+    same bar. Unknown forts and raid bosses -- which are generated fresh and are
+    not members -- are a silent no-op."""
+    hp = max(0, int(hp))
+    owner = None
+    with _lock:
+        for m in GYMS.get(fort_id, []):
+            if m["uid"] == uid:
+                if m.get("stamina") == hp:
+                    return False
+                m["stamina"] = hp
+                m["hurt_ms"] = int(time.time() * 1000)
+                owner = m.get("owner")
+                break
+        else:
+            return False
+    save_gyms()
+    if owner and owner == current().username:
+        update_caught(uid, stamina=hp)
+    return True
+
+
+def gym_hp(fort_id, uid):
+    """The defender's stored health, or None if it has never been hurt. This is the
+    RAW stored value -- protocol._defender_hp() applies the heal-back."""
+    for m in gym_members(fort_id):
+        if m["uid"] == uid:
+            v = m.get("stamina")
+            return None if v is None else max(0, int(v))
+    return None
 
 
 def recall(fort_id, uid):

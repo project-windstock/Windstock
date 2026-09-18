@@ -2851,6 +2851,28 @@ def _battle_damage(atk_pid, atk_uid, atk_cp, def_pid, def_uid, def_cp, move_id,
     return max(1, int(0.5 * power * (atk / dfn) * stab * eff) + 1)
 
 
+def _defender_hp(m):
+    """(current, max) for a gym defender.
+
+    Damage STICKS between attacks -- world.set_gym_hp() saves it with the gym --
+    and heals back over gyms.defender_heal_minutes, so a gym can be worn down by
+    attacks in quick succession but recovers if it is left alone. Never reports 0:
+    a defender nobody can fight would leave the gym unbeatable while its prestige
+    still stands, and prestige, not HP, is what decides who holds it."""
+    import world as _w                       # noqa: F401  (kept symmetrical)
+    hp_max = _hp_for(m["cp"], m["pokemon_id"], m["uid"])
+    stored = m.get("stamina")
+    if stored is None:
+        return hp_max, hp_max
+    hp = max(0, min(int(stored), hp_max))
+    mins = _cfg.get("gyms", "defender_heal_minutes", cast=float)
+    hurt = m.get("hurt_ms")
+    if mins > 0 and hurt:
+        elapsed = max(0, int(time.time() * 1000) - int(hurt))
+        hp += int(hp_max * (elapsed / (mins * 60_000.0)))
+    return max(1, min(hp, hp_max)), hp_max
+
+
 def parse_start_gym_battle(msg):
     """StartGymBattleMessage { gym_id=1, attacking_pokemon_ids=2 (repeated fixed64),
     defending_pokemon_id=3, player_latitude=4, player_longitude=5 }."""
@@ -2886,7 +2908,7 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
     # sides apart -- it quietly restarted the battle under a fresh id, and every
     # reply we sent for the old id came back as "mismatched battleId".
     def _usable(c):
-        return (c is not None and int(c.get("stamina", 20)) > 0
+        return (c is not None and current_hp(c) > 0
                 and c["uid"] != defender["uid"]
                 and not world.is_deployed(c["uid"]))
 
@@ -2904,8 +2926,7 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
 
     is_raid = bool(defender.get("raid"))
     bid = "B%x%04x" % (now_ms, (defender["uid"] ^ atk["uid"]) & 0xFFFF)
-    dhp = _hp_for(defender["cp"], defender["pokemon_id"], defender["uid"])
-    dmax = dhp
+    dhp, dmax = _defender_hp(defender)
     if is_raid:
         # Multiplayer raid: the boss has ONE shared HP pool (scaled up so it takes a
         # group), and you join the fight at whatever HP the others have left it on.
@@ -2914,7 +2935,11 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
         if boss["hp"] <= 0:
             return pb.Writer().uint(1, 5).to_bytes()           # GYM_EMPTY: boss down, respawning
         dhp = boss["hp"]
-    ahp = _hp_for(atk["cp"], atk["pokemon_id"], atk["uid"])
+    # Your Pokemon carries the damage it took in the last fight. Reporting its max
+    # here is what made the bar wrong: a half-dead attacker opened FULL and then
+    # dropped a chunk on the first tap.
+    amax = _hp_for(atk["cp"], atk["pokemon_id"], atk["uid"])
+    ahp = max(1, min(current_hp(atk), amax))
     # Same-team gyms are TRAINING; enemy gyms are NORMAL (attack). The client runs
     # the fight locally and -- measured on this build -- will enter combat for a
     # TRAINING battle but NOT a NORMAL one, so enemy battles open and then freeze
@@ -2939,13 +2964,13 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
                           "atk_pid": atk["pokemon_id"], "def_pid": defender["pokemon_id"],
                           "atk_cp": atk["cp"], "def_cp": defender["cp"],
                           "atk_hp": ahp, "def_hp": dhp,
-                          "atk_max": ahp, "def_max": dmax, "type": btype,
+                          "atk_max": amax, "def_max": dmax, "type": btype,
                           "raid": is_raid, "friendly": friendly,
                           "lineup": lineup, "beaten": [], "prestige_delta": 0,
                           "start": now_ms, "player": world.current().username}
     lvl, _xp = world.stats()
     me = _battle_participant(atk["pokemon_id"], atk["uid"], atk["cp"], ahp,
-                             world.current().username, lvl)
+                             world.current().username, lvl, hp_max=amax)
     # A raid boss is not a person -- report level -1 so nobody mistakes "raid"
     # for a real trainer who parked a Mewtwo in every gym.
     def_lvl = -1 if is_raid else lvl
@@ -3265,6 +3290,10 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
             b["prestige_delta"] = b.get("prestige_delta", 0) + (
                 dp if b.get("friendly") else -dp)
         b.setdefault("beaten", []).append(b["defender"])
+        # Bank the knockout. set_gym_hp() also zeroes the OWNER's copy, so a
+        # defender that lost comes home fainted rather than fresh. (No-op in a
+        # raid: the boss is not a gym member and has its own shared pool.)
+        world.set_gym_hp(gym_id, b["defender"], 0)
         # Advance to the next un-beaten defender from the run's snapshot. The gym
         # roster is left untouched until the run ends, so prestige is applied once.
         # In raid mode gym_members() always reports the boss, so a raid is one
@@ -3277,10 +3306,9 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
                 nxt = next((m for m in world.gym_members(gym_id)
                             if m["uid"] == nxt_uid), None)
         if nxt:
+            nhp, nmax = _defender_hp(nxt)
             b.update(defender=nxt["uid"], def_pid=nxt["pokemon_id"],
-                     def_cp=nxt["cp"],
-                     def_hp=_hp_for(nxt["cp"], nxt["pokemon_id"], nxt["uid"]),
-                     def_max=_hp_for(nxt["cp"], nxt["pokemon_id"], nxt["uid"]))
+                     def_cp=nxt["cp"], def_hp=nhp, def_max=nmax)
         else:
             state = BS_VICTORY
             if b.get("raid"):
@@ -3321,11 +3349,20 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
             world.bump("battle_training_total")
         else:
             world.bump("battle_attack_total")
-        world.update_caught(b["attacker"], stamina=0)           # your Pokemon fainted
+        b["atk_hp"] = 0                                        # your Pokemon fainted
         log_actions.append(_action(BA_FAINT, t, 0, 0, 0,
                                    b["attacker"], b["attacker"]))
         log_actions.append(_action(BA_DEFEAT, t, 0, 0, 0,
                                    b["defender"], b["attacker"]))
+
+    # Keep the stored health in step with the battle on EVERY beat, not only when
+    # something faints: win a gym on 8 HP, back out, and the Pokemon list should
+    # not draw a full bar -- nor should the next attacker face a healed defender.
+    b["atk_hp"] = max(0, min(int(b["atk_hp"]), int(b.get("atk_max") or 1)))
+    b["def_hp"] = max(0, min(int(b["def_hp"]), int(b.get("def_max") or 1)))
+    world.update_caught(b["attacker"], stamina=b["atk_hp"])
+    if not b.get("raid"):
+        world.set_gym_hp(gym_id, b["defender"], b["def_hp"])
 
     b["last_emit"] = t
     if state != BS_ACTIVE:
@@ -3385,8 +3422,16 @@ def build_gym_membership(m) -> bytes:
                .int_(2, lvl)
                .message(3, build_player_avatar())
                .to_bytes())
+    # Merge the stored battle damage (healed forward to now) over the owner's own
+    # record, so the gym screen shows the bar the next attacker will actually face
+    # and still keeps nickname/IV detail for defenders that belong to this account.
+    extra = None
+    if m.get("stamina") is not None:
+        extra = dict(world.get_caught(m["uid"]) or {})
+        extra["stamina"] = _defender_hp(m)[0]
     return (pb.Writer()
-            .message(1, build_pokemon_data(m["pokemon_id"], m["uid"], m["cp"]))
+            .message(1, build_pokemon_data(m["pokemon_id"], m["uid"], m["cp"],
+                                           extra=extra))
             .message(2, profile)
             .to_bytes())
 
