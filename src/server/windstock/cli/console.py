@@ -38,7 +38,8 @@ def show_banner():
     print()
     for line, shade in zip(BANNER.strip("\n").splitlines(), (51, 45, 39, 33, 27)):
         print(fg256(shade) + line + (RESET if COLOR else ""))
-    print(paint("  a Pokemon GO 0.29 (July 2016) private server, made from scratch",
+    print(paint("  a Pokemon GO 0.35 (android) and 1.5 (ios) private server! Independntly" \
+    "developed by @probxton54 (bracky), and @chucny (chucny) on Discord!",
                 DIM, WHITE))
 
 
