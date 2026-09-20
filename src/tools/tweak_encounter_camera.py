@@ -18,7 +18,7 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server"))
-import pb  # noqa: E402
+from windstock.game import pb  # noqa: E402
 
 HERE = os.path.join(os.path.dirname(__file__), "..", "server")
 GM = os.path.join(HERE, "game_master.bin")

@@ -21,9 +21,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server"))
-import datadir  # noqa: E402
+from windstock.config import paths  # noqa: E402
 
-OUT = os.path.join(datadir.ensure(), "osm_forts.json")
+OUT = os.path.join(paths.ensure(), "osm_forts.json")
 
 # OSM 'type' values (and PoGo has none of these) that read as a landmark -> Gym.
 # Everything else is a stop unless the hash below promotes ~1 in 10 to a Gym, so

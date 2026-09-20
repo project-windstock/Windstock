@@ -776,19 +776,23 @@ def cmd_log(args):
 
 
 def cmd_clearlog(args):
-    """Clear the printed console AND empty server-log.txt (the log window).
+    """Wipe ALL printed text -- the terminal AND server-log.txt.
 
-    Redrawing the banner afterwards leaves a clean, framed screen instead of an
-    empty one, so the next log line has context. The log file is truncated while
-    the server keeps appending to it.
+    The screen is cleared *including the scrollback*, so nothing printed earlier
+    is left to scroll back to (a plain clear only took the current screen away).
+    server-log.txt is truncated while the server keeps appending to it. Redrawing
+    the banner afterwards leaves a clean, framed screen instead of an empty one.
     """
     from windstock.cli import logfile
+    from windstock.cli import theme
     ok = logfile.clear_log()
-    if COLOR:
-        print("\033[2J\033[H", end="")     # clear + home (VT-enabled terminals)
+    cleared = theme.clear_screen()
+    if cleared:
         show_banner()
-    if ok:
+    if ok and cleared:
         _ok("cleared the screen and server-log.txt")
+    elif ok:
+        _ok("cleared server-log.txt (no terminal here to clear)")
     else:
         _fail("cleared the screen, but server-log.txt could not be truncated")
 

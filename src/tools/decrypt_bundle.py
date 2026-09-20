@@ -40,7 +40,7 @@ KEY_MASK = b"\x50\x46\x41\x69\x24\x3B\x5D\x47\x37\x52\x67\x3E\x6B\x7A\x34\x77"
 
 # reuse the server's tiny protobuf codec to read the digest
 sys.path.insert(0, os.path.join(HERE, "..", "server"))
-import pb  # noqa: E402
+from windstock.game import pb  # noqa: E402
 
 
 def digest_key(assets_dir, bundle_name):

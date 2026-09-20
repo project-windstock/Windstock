@@ -209,7 +209,7 @@ DEFAULTS = {
         "incense_minutes": 30,      # extra wild Pokemon around you
         "incense_extra_spawns": 6,  # how many more, on top of the usual
         "lure_minutes": 30,         # a Lure on a PokeStop
-        "lure_extra_spawns": 4,     # extra Pokemon around a lured stop
+        "lure_extra_spawns": 5,     # bonus Pokemon around a lured stop
     },
     "pokemon": {
         # true = power-ups follow the real 2016 curve: each one raises the Pokemon

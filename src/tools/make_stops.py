@@ -32,9 +32,9 @@ import random
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server"))
-import datadir  # noqa: E402
+from windstock.config import paths  # noqa: E402
 
-OUT = os.path.join(datadir.ensure(), "osm_forts.json")
+OUT = os.path.join(paths.ensure(), "osm_forts.json")
 KM_PER_DEG_LAT = 111.0
 LANDMARK_NAMES = ["Park", "Plaza", "Monument", "Fountain", "Statue", "Mural",
                   "Trailhead", "Overlook", "Well", "Marker", "Garden", "Shrine"]

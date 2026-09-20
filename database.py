@@ -61,10 +61,10 @@ def _setting(key, env=None, default=None):
 
 
 # Where the game server keeps its data: the folder holding settings.json,
-# places.json and saves/. The server now lives under src/server, and datadir.py
-# puts its files in a `data/` folder there -- so that is the default. Override
-# with CHUCNY_SERVER_DIR for any other layout (an old /chucnyserver checkout, a
-# packaged build, tests, ...).
+# places.json and saves/. The server now lives under src/server, and
+# windstock.config.paths puts its files in a `data/` folder there -- so that is
+# the default. Override with CHUCNY_SERVER_DIR for any other layout (an old
+# /chucnyserver checkout, a packaged build, tests, ...).
 _HERE = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = _HERE / "src" / "server" / "data"
 BASE_DIR = Path(os.environ.get("CHUCNY_SERVER_DIR") or DEFAULT_DATA_DIR)

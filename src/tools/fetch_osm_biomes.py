@@ -22,19 +22,14 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server"))
-try:
-    # The ONE definition of the biomes and their OSM tags: src/server/biomes.json,
-    # read by the server itself. Keep the fallback below only for running this
-    # script against a checkout that has no package yet.
-    from windstock.config import paths as _paths
-    from windstock.geo import biomes as _biomes
-    OUT = os.path.join(_paths.ensure(), "osm_biomes.json")
-    RULES = _biomes.osm_rules()
-    KEYS = _biomes.osm_keys()
-except Exception:                                      # noqa: BLE001
-    import datadir  # noqa: E402  (legacy layout)
-    OUT = os.path.join(datadir.ensure(), "osm_biomes.json")
-    _biomes = None
+# The ONE definition of the biomes and their OSM tags: src/server/windstock/geo/
+# biomes.py (backed by biomes.json), read by the server itself.
+from windstock.config import paths as _paths   # noqa: E402
+from windstock.geo import biomes as _biomes     # noqa: E402
+
+OUT = os.path.join(_paths.ensure(), "osm_biomes.json")
+RULES = _biomes.osm_rules()
+KEYS = _biomes.osm_keys()
 
 
 OVERPASS = ["https://overpass.kumi.systems/api/interpreter",

@@ -23,9 +23,9 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server"))
-import datadir  # noqa: E402
+from windstock.config import paths  # noqa: E402
 
-OUT = os.path.join(datadir.ensure(), "osm_forts.json")
+OUT = os.path.join(paths.ensure(), "osm_forts.json")
 # Several public Overpass mirrors -- we try them in turn (the main one 504s a lot).
 OVERPASS = ["https://overpass.kumi.systems/api/interpreter",
             "https://overpass-api.de/api/interpreter",

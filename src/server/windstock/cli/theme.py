@@ -70,6 +70,29 @@ def fg256(n):
     return "\033[38;5;%dm" % n if COLOR else ""
 
 
+def clear_screen():
+    """Wipe ALL printed text -- the visible screen AND the scrollback -- then home
+    the cursor.
+
+    ``ESC[2J`` on its own only clears what is currently on screen; everything
+    printed earlier is still there when you scroll up, so the terminal looked
+    like it had merely scrolled. ``ESC[3J`` erases the saved lines as well
+    (terminals that don't implement it ignore it). Written straight to the real
+    stdout so the escape codes never land in server-log.txt. Returns True when a
+    terminal actually accepted the sequence; False with no terminal attached (the
+    windowed exe) or when output is redirected to a file/pipe.
+    """
+    out = sys.__stdout__
+    try:
+        if out is None or not out.isatty():
+            return False
+        out.write("\033[2J\033[3J\033[H")
+        out.flush()
+        return True
+    except Exception:
+        return False
+
+
 def box(title, lines=(), colour=None, pad=2):
     """Print an ASCII-framed block -- the console's 'square' for a chunk of text.
 

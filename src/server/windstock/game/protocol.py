@@ -579,7 +579,15 @@ ASSET_TS = 1_470_600_000_000        # both must be NON-zero or config-version fa
                                     #  asset digest after we change bundle entries;
                                     #  bumped when we swapped the fake egg for the real
                                     #  151-bundle digest w/ genuine keys, 2026-08-02)
-TEMPLATES_TS = 1_474_400_000_000    # bumped 2026-09-13: game_master.bin went MISSING from
+TEMPLATES_TS = 1_474_500_000_000    # bumped 2026-09-20: build_download_item_templates_response
+                                    # used to read game_master.bin from the WINDSTOCK/GAME
+                                    # folder (wrong after the move into the package), so it
+                                    # silently served the 32-byte stub -> white, uncatchable
+                                    # encounter screen. Path fixed to _HERE; this bump makes
+                                    # the client throw away the stale stub it cached under the
+                                    # old ts and re-download the real 855-template master.
+                                    # (was 1_474_400_000_000.)
+                                    # bumped 2026-09-13: game_master.bin went MISSING from
                                     # the server dir (client got a 32-byte stub template ->
                                     # tutorial encounter white-screened on catch); restored the
                                     # authentic master (855 templates). Bump forces re-download.
@@ -4390,7 +4398,12 @@ def build_download_item_templates_response(templates=None) -> bytes:
     global _GAME_MASTER
     if os.environ.get("SERVE_GAME_MASTER") == "1":
         if _GAME_MASTER is None:
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "game_master.bin")
+            # _HERE (= paths.RESOURCE_ROOT), NOT this module's own folder: the file
+            # sits at the server root (src/server/game_master.bin, or the unpacked
+            # bundle dir). Reading from windstock/game/ always failed -> the client
+            # got the stub template below and every Pokemon rendered solid white on
+            # the encounter screen.
+            path = os.path.join(_HERE, "game_master.bin")
             try:
                 with open(path, "rb") as fh:
                     raw = fh.read()
@@ -4412,7 +4425,14 @@ def build_download_item_templates_response(templates=None) -> bytes:
                 for t in pb.get_all(d, 2):
                     w.message(2, t)
                 _GAME_MASTER = w.to_bytes()
-            except OSError:
+            except OSError as e:
+                # LOUD, not silent: falling back to the stub template below leaves
+                # the client with no Pokemon templates, which white-screens the
+                # encounter/catch screen and makes the tutorial starter
+                # uncatchable. Never let this go unnoticed again.
+                print(f"!! game_master.bin not loaded ({e}) -- serving STUB templates; "
+                      f"Pokemon will render white and cannot be caught. "
+                      f"Expected at {path}", flush=True)
                 _GAME_MASTER = b""
         if _GAME_MASTER:
             # Append the single authoritative version. Bump TEMPLATES_TS to force a
