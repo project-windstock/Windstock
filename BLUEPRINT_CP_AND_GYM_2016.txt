@@ -1,0 +1,272 @@
+WINDSTOCK v0.29 -- "EXACT 2016 CP" + "REALISTIC GYM BATTLES" BLUEPRINT
+=====================================================================
+This is a self-contained implementation prompt. Give it to an AI coding
+agent. It targets the Windstock server (a Pokemon GO 0.29.0 / July-2016
+private server). All changes are Python, server-side only; no client
+modification is needed or possible for these goals.
+
+Typographic conventions: "!" lines are REQUIREMENTS the AI must satisfy.
+"-" bullets are implementation notes / suggestions. No requirement may be
+"approximated away" silently; if a constant cannot be made exact, expose it
+as a config knob (config/settings.py) with the 2016 value as the default and
+say so. Do NOT commit any changes; implement and report.
+
+========================================================================================
+PART 1 - EXACT 2016 CP / POWER-UP / EVOLVE / HP  (high priority)
+========================================================================================
+
+WHY THE CURRENT CODE IS NOT EXACT
+---------------------------------
+1. A caught Pokemon stores ONLY {uid, pokemon_id, cp, caught_ms}
+   (windstock/game/world.py, def add_caught). There is no individual level
+   and no IV storage, so a Pokemon is just a bare CP number.
+2. IVs are DERIVED deterministically from the uid each time
+   (windstock/game/protocol.py, def _ivs: random.Random(uid).randint 3x).
+   This makes them "stable for a Pokemon" but they are recomputed, never
+   stored, and are totally decoupled from the CP.
+3. Wild CP is ROLLED DIRECTLY from a table / range (protocol.py
+   def _pick_cp -> cpdata.pick_cp or rnd.randint) -- the real game rolls a
+   LEVEL and IVs, then CP falls out of the formula. A free-rolled CP then has
+   to be INVERTED back into a multiplier (protocol.py def cpm_for), and the
+   inversion is deliberately NOT clamped to the level-40 ceiling (cpm can be
+   6.0), so a "wild" Pokemon can exist at an impossible level.
+4. Power-up snaps the inverted multiplier to the nearest half-level, then
+   steps +1 (protocol.py def build_upgrade_response). Works, but inherits all
+   the error from (3).
+5. EVOLVE uses newcp = int(cp * 1.6) + 20 (protocol.py
+   def build_evolve_response). The real 2016 evolution KEEPS the individual's
+   level and IVs and recomputes CP for the new species -- this is the single
+   biggest CP inaccuracy in the codebase.
+6. HP is computed from the inverted multiplier (protocol.py def _hp_for).
+   With an exact stored level+IVs, HP, CP and power-up costs will all agree
+   with the real game for the first time.
+
+TARGET BEHAVIOUR (the goal, mirroring Pokemon GO July 2016)
+----------------------------------------------------------
+! Every Pokemon (wild catch, egg hatch, raid drop, gift, admin-spawned)
+  must carry a real, persisted IV triple (attack, defense, stamina, each
+  0..15) and a real, persisted Pokemon level as a half-step index into the
+  2016 ladder (0..78 = Pokemon level 1..40, steps in
+  windstock/game/leveling.py LEVELS[i] = (cp_multiplier, dust, candy)).
+! CP is always DERIVED, never invented (matches protocol.py def cp_at_level
+  and leveling.py):
+      Atk = (base_atk + iv_atk) * cpm
+      Def = (base_def + iv_def) * cpm
+      Sta = (base_stamina + iv_sta) * cpm
+      CP  = floor(Atk * sqrt(Def) * sqrt(Sta) / 10)
+      HP  = floor(Sta)                        (i.e. (base_stamina + iv) * cpm)
+  base_* come from windstock/game/gamedata.py STATS (already the exact
+  2016 values). cpm comes from leveling.LEVELS[level_index][0].
+! Power-up moves the Pokemon EXACTLY one half-level up the ladder, charges
+  the ladder's exact dust+candy for the CURRENT step, and recomputes CP/HP
+  with the forward formula. Trainer-level gate stays as-is:
+  max_index_for_trainer(trainer_level) = min(78, 2*trainer_level + 2)
+  (already correct: "max 2 levels above your trainer").
+! Evolve: keep level_index and all three IVs unchanged, swap species, full
+  moveset reroll (existing world logic), recompute CP/HP for the new species
+  at the SAME cpm. The 1.6x+20 formula must be deleted.
+! Add a /default-able config: spawn roll for wild Pokemon level. 2016 wild
+  spawns were rolled roughly AT the trainer's level, never above ~trainer+2,
+  and capped at the level-30 spawn ceiling of that era. Implement:
+      level = randint(min(1, max_lvl), max_lvl) with
+      max_lvl = min(30, trainer_level + 2)
+  EXACTNESS NOTE: the precise 2016 wild-level distribution is community-
+  documented, not in the game master. Implement the roll above, expose every
+  constant (base spread, trainer offset, hard 30 cap) under
+  settings.json [spawns] as knobs, default to the 2016 behaviour.
+
+IMPLEMENTATION STEPS (suggested order)
+--------------------------------------
+1. Data model
+   - windstock/game/world.py: def add_caught(uid, pokemon_id, cp) -> accept
+     and persist level_index + iv_a/iv_d/iv_s. add_caught and its callers
+     (wild catch, hatch, raid drop, bonus/gift spawns, admin console) all
+     pass the new fields. THE SERVER SHOULD NEVER STORE A BARE CP AS THE
+     SOURCE OF TRUTH -- store level+IVs, always derive CP.
+   - Backfill/migration for EXISTING saves (players already have Pokemon
+     dicts without the new keys): on load, for any Pokemon missing the keys,
+     derive iv triple via protocol._ivs(uid) (keeps them stable/identical to
+     today) and compute level_index = leveling.level_index_for_cpm(
+     protocol.cpm_for(...)) as today, then SAVE it back once. Nobody's
+     existing Pokemon gets stronger or weaker; they just get locked in.
+2. Spawn/hatch CP
+   - protocol.py def _pick_cp: STOP returning a CP. Return (level_index) or
+     nothing. The spawn/catch path must instead roll a level (see target
+     behaviour), derive IVs, and build the Pokemon with cp =
+     cp_at_level(pid, uid, LEVELS[idx][0]). Keep cpdata.json's common-CP
+     flavour OUT of the level roll (the common-CP list was the old model).
+     If you want to keep the "common wild CP" feel, map a common CP to the
+     NEAREST attainable (level, max-IV bias) combination so the *display*
+     stays recognisable -- or delete it. Do not keep inventing CP.
+   - Hatch (protocol.py def hatch_species/def _egg_species_pools): hatchlings
+     roll a higher level band (e.g. 20 +- spread for 10km eggs) -- tune to
+     preserve today's "10km eggs feel strong" without inventing CP.
+3. Upgrade path
+   - protocol.py def build_upgrade_response: read stored level_index, verify
+     level_index+1 <= min(78, max_index_for_trainer), charge
+     leveling.LEVELS[level_index] dust+candy, set level_index += 1, derive
+     CP/HP. Delete cpm_for-based snapping here.
+4. Evolve
+   - protocol.py def build_evolve_response: keep stored iv_a/iv_d/iv_s and
+     level_index, swap pokemon_id, derive CP/HP. DELETE newcp = cp*1.6 + 20.
+5. HP consistently
+   - protocol.py def _hp_for / def max_hp / def current_hp: compute stamina
+     from stored IVs + stored level's cpm. Delete the cpm_for inversion and
+     the cp*0.6+20 fallback for known species; keep the cp*0.6+20 fallback
+     ONLY for species absent from gamedata.STATS.
+6. Read path
+   - protocol.py def build_pokemon_data: PokemonProto.CpMultiplier (field 20)
+     must now be sent EXACTLY as leveling.LEVELS[level_index][0] (real 2016
+     behaviour) instead of the inverted value. Verify the client's displayed
+     CP and HP then match what the server computes. This is the test that
+     proves Part 1 worked.
+   - Pokedex (def _max_reachable_cp in protocol.py) keeps the existing
+     level-40 + 15/15/15 formula -- that is already the 2016 ceiling.
+7. Config
+   - settings.py [pokemon]: add/keep real_powerups (True default). Add
+     [spawns] knobs for the wild-level roll constants from the target
+     behaviour. Any 2016 constant you cannot source exactly becomes a knob
+     with the era value as default + a comment saying "community-documented,
+     verify".
+
+VERIFICATION (must be demonstrated)
+------------------------------------
+- Catch the same species at the same trainer level repeatedly: every CP must
+  be reproducible from (level, iv) and must appear within the level roll band.
+- A 15/15/15 at level 40 yields exactly gamedata's reachable max for that
+  species (compare with def _max_reachable_cp).
+- Powering up charges the ladder dust/candy the CLIENT's button shows
+  (leveling.py already transcribed from the client, so this must hold for
+  every step 1..40).
+- Evolving keeps whatever the IV circle would be: CP after evolve ==
+  floor(new_base * cpm) formula, NOT ~1.6x old CP (unless by coincidence).
+- HP bar on a caught-and-powered-up Pokemon equals floor((base_stamina+iv)*cpm).
+- No existing save breaks; counters/level-ups unaffected.
+
+========================================================================================
+PART 2 - REALISTIC 2016 GYM BATTLES  (high priority)
+========================================================================================
+
+WHY THE CURRENT CODE IS NOT FULLY REALISTIC
+-------------------------------------------
+1. Only ONE attacker ever fights. protocol.py def build_start_gym_battle_response
+   picks a single healthy Pokemon (world.BATTLES["attacker"]) even though the
+   client sends up to 6 attacking_pokemon_ids. 2016 gym battles used a full
+   6-mon team: when your active Pokemon faints, the next healthy one walks on.
+2. Prestige is a custom curve: world.py def prestige_for_defeat returns
+   int(max(400, min(2500, 800*(0.4 + def_cp/atk_cp)))). This does not match
+   2016 numbers, so gym level-up/down feels wrong on both sides.
+3. Everything else the era required is ALREADY there and must be preserved:
+   the real 2016 damage formula +1 floor (protocol.py def _battle_damage),
+   STAB (1.25) and full type-effectiveness table, real stamina HP
+   (def _hp_for), move durations/damage windows/energy from gamedata.MOVES
+   (def move_timing), track dodges (BA_DODGE -> no counter), defender
+   counter-attacks, gym level->defender-slot mapping with the authentic
+   2016 threshold table (world.py GYM_LEVELS = 0,2000,4000,8000,12000,16000,
+   20000,30000,40000,50000 -- verified correct), lower-CP-first defender
+   order, prestige banking across one run, kicked-out weakest defender on a
+   level-down, gym-to-neutral at <=0, and the defender HP-stamina fix.
+
+TARGET BEHAVIOUR (July 2016 rules)
+----------------------------------
+! A battle run starts with the client's team (up to 6, parsed already in
+  def parse_start_gym_battle), sorted strongest-first by CP by the server or
+  client order as received; each enters with its own full HP from the Part-1
+  stamina formula. When the active attacker's HP hits 0, the next healthy
+  attacker on the bench takes over mid-run with a fresh HP bar. If none
+  remain, the run is DEFEATED and the current defender's stamina survives.
+! Defender side keeps the existing weakest-first ladder through the whole
+  gym; a defeated defender leaves the battle (prestige per the rules below)
+  and the next walks in until the gym is empty (VICTORY) or your whole team
+  is down (DEFEATED).
+! Only the LAST state transitions apply: do not double-count prestige.
+! Prestige rules (July 2016, community-documented; if you find a primary
+  source with different exact values, keep the 2016 default and expose a knob):
+    - ATTACKING an enemy gym: defeating each defender costs the gym
+      2000 prestige. Gyms can be worn down below 0 -> neutral and empty, as
+      world.add_prestige already handles. (Known era constant: -2000/d.)
+    - TRAINING your own gym: defeating each defender GAINS prestige scaled
+      by CP ratio: gain = round(500 * def_cp/atk_cp), min 1, capped at +1000,
+      PLUS +100 if your attacker CP is strictly higher than the defender's.
+      (Flat +100 for a favourably-out-ranked win was era behaviour; expose
+      the exact numbers as knobs.)
+    - These replace def prestige_for_defeat (world.py:1606). add_prestige
+      keeps its signature (fort_id, delta) so callers don't change.
+! Raid battles (simulation mode, not a 2016 feature) keep today's behaviour:
+  no gym prestige, boss drops at your feet. Do not regress them.
+! The client-limitation workaround stays: battles against an enemy gym are
+  still REPORTED as training via settings.py [battles] attack_as_training
+  (True), because this 0.29 client refuses to enter NORMAL-type combat. The
+  server decides TRAIN vs ATTACK from the REAL team relationship
+  (b['friendly']) as it already does, and still neutrals the gym on a full
+  clear. Mark this limitation clearly in a comment.
+
+IMPLEMENTATION STEPS (suggested order)
+--------------------------------------
+1. protocol.py def build_start_gym_battle_response:
+   - Accept all usable attackers (healthy, not deployed, not the defender):
+     the client's 6 attacking_pokemon_ids, filtered, then topped up from
+     world.caught() so you always field up to 6.
+   - world.BATTLES[bid] gains "bench": ordered list of dicts
+     {uid, pid, cp, hp, max, level_index, ivs}; "attacker" becomes the index
+     of the active one (keep the key for compatibility, set its hp from the
+     bench leader). Send the ACTIVE attacker in active_attacker.
+   - Send each bench member to the client the way the 2016 client expects:
+     BattleParticipant list via battle_log PLAYER_JOIN for the active one;
+     reverse_pokemon/defeated_pokemon in the response protos stay audio-
+     visual, exact field layout is per POGOProtos (see pogo_manager / rpc
+     uses) -- the important part is the active attacker's
+     BattleActions/participant is correct.
+2. protocol.py def build_attack_gym_response:
+   - On the active attacker fainting (atk_hp <= 0): pop the bench head;
+     if someone is left, emit a BA_FAINT for the dead one, emit a
+     PLAYER_JOIN for the replacement with its own HP/energy 0, set the
+     battle's active attacker data, continue the run -- the battle does NOT
+     end. Only end DEFEATED when the bench is empty. Priotise: the client
+     auto-swaps to your next Pokemon in 2016 gym fights; the server driving
+     the swap through the log actions is what shows it.
+3. world.py def prestige_for_defeat: replace the body with the TRAINING gain
+   rule (+ scaled ratio, +100 flat when atk > def, cap 1000). The ATTACK
+   drain (-2000/defender) is applied as it already is via the sign of
+   b['friendly'] in build_attack_gym_response; just ensure the magnitude now
+   comes from this rule (attack side: constant 2000) instead of the custom
+   curve. Keep min/max guards so prestige is never negative below 0 (the
+   neutral case belongs to add_prestige).
+4. settings.py [battles]: add knobs: attack_prestige_loss (2000),
+   train_prestige_base (500), train_prestige_bonus_flat (100),
+   train_prestige_cap (1000), plus a comment that these are the
+   community-documented July-2016 values and were verified against era
+   research. Keep attack_as_training.
+5. Do not touch: GYM_LEVELS, add_prestige, gym_capacity/gym_level mapping,
+   the attack_as_training override, _raid_drop, BA_DODGE handling,
+   move_timing / _battle_damage / _hp_for internals (only their inputs).
+
+VERIFICATION (must be demonstrated)
+------------------------------------
+- Deploy a weak defender in a friendly gym, attack it with a much stronger
+  Pokemon: prestige rises by a small amount (~+100-ish, the flat bonus) and
+  the gym can be raised across runs.
+- Attack an enemy gym with a lower-CP Pokemon: each defeated defender drains
+  exactly the attack loss; a 1-Pokemon level-1 gym (prestige <= 2000) goes
+  neutral on the first clear.
+- Send a fainted team / one healthy Pokemon: the run uses the bench and fails
+  correctly when exhausted; the stored stamina of defeated attackers is set
+  to 0 (existing behaviour at world.update_caught stamina=0), bench survivors
+  remain unbanked.
+- Replay a 6v6 log: player joins, attacker faints replaced by next with fresh
+  HP, defender ladder progresses weakest-first, single prestige application,
+  single VICTORY/DEFEAT.
+- Regression: solo training and raid battles still work exactly as before.
+
+========================================================================================
+HARD LIMITS (NOT implementable server-side -- the client owns these)
+========================================================================================
+- Enemy-gym combat ENTRY for NORMAL-type battles: this patched 0.29 client
+  only enters combat for TRAINING battles (settings.py:244 comment). The
+  attack_as_training override is the fix and it cannot be removed server-side.
+- Battle ANIMATION playback: this client does NOT replay server-sent actions
+  (protocol.py:3129 note). The server already sends the authoritative
+  outcome/log; choreography is the client's.
+- Gym BATTLE ITSELF is simulated on the phone in this era -- the server can
+  only dictate outcome/HP/prestige, which is exactly what this blueprint
+  makes accurate.

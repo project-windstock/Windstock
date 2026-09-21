@@ -1,0 +1,171 @@
+WINDSTOCK vs. THE JULY 2016 LAUNCH VERSION
+===========================================
+Features that this server does NOT have compared to the authentic
+Pokemon GO 0.29.0 (July 2016) launch build, with an explanation of each.
+
+SCOPE NOTES
+-----------
+- "Launch version" = the game and its service as they existed in July 2016,
+  NOT the modern game. Features that did not exist in July 2016 (Trading,
+  Buddy Pokemon, Raids, PvP, Appraisal, Daily streak bonuses, Team Rocket,
+  Weather, Adventure Sync, Friends, etc.) are deliberately EXCLUDED -- their
+  absence is not a gap.
+- Many client request methods exist in the 0.29 client but are never sent
+  from the 2016 UI. Where one is listed, it means the server has no real
+  handler for it; where the 2016 client actually used it, it is listed as a
+  genuine gap.
+- Verified against: game/rpc.py handler table, game/protocol.py Method enum,
+  config/settings.py, game/shop.py and the project README.
+
+================================================================================
+PART A - FEATURES THE 2016 GAME HAD THAT THIS SERVER DOES NOT IMPLEMENT AT ALL
+================================================================================
+
+1. SFIDA - the Pokemon GO Plus accessory (wearable)
+   The 0.29 client contains the full SFIDA request family (SFIDA_REGISTRATION,
+   SFIDA_CERTIFICATION, SFIDA_UPDATE, SFIDA_ACTION, SFIDA_DOWSER,
+   SFIDA_CAPTURE). The server answers none of them.
+   Explanation: SFIDA is Niantics codename for the Pokemon GO Plus, the
+   Bluetooth wristband of the day. Registering the device,
+   certification, low-power "dowsing" scans (SFIDA_ACTION) that find nearby
+   Pokemon while the screen is off, the LED/vibration alerts and the one-tap
+   throw-catch flow all went through these requests. This server is
+   screen-on only; there is no wearable pairing and no background "catch it
+   for me" flow.
+
+2. BUY_GEM_PACK / GET_ITEM_PACK / BUY_ITEM_PACK - the real-money PokeCoin
+   store
+   In July 2016 the in-game Shop let you buy PokeCoins ("gems") with a real
+   credit card, and buy bundles of items with those coins (the platform
+   "shop" request, envelope field 6). The server implements a free in-game
+   shop (coins earned by holding Gyms) but handles none of the paid-pack
+   endpoints.
+   Explanation: the monetisation layer is intentionally replaced by a free
+   economy. You cannot buy coins with real money; coins only come from the
+   defender bonus. The client-side shelf renders, but the paid-purchase RPCs
+   are unhandled by design.
+
+3. INCENSE_ENCOUNTER / DISK_ENCOUNTER - dedicated incense & lure encounters
+   The 0.29 protocol has separate "incense encounter" and "disk/lure
+   encounter" request types with their own wrap-up flow. The server never
+   uses them.
+   Explanation: incense and lure Pokemon are spawned as ordinary WILD
+   Pokemon instead, so the player just taps them like any grass spawn. The
+   mechanic works end-to-end, but the distinct 2016 "a Pokemon appeared from
+   your Incense / from a Lured Stop" presentation is absent.
+
+4. TRADE_SEARCH / TRADE_OFFER / TRADE_RESPONSE / TRADE_RESULT - trading
+   The client's Method enum contains these, but they are never fired from
+   the 2016 UI and the server has no handler.
+   Explanation: light server support is not a "missing feature" in play
+   terms because trading was NOT a feature of the July 2016 game (it was
+   greyed out / "coming soon"). Listed for completeness only.
+
+5. USE_ITEM_FLEE / ITEM_USE - the standalone "Pokemon flees" item action
+   No handler. The 2016 game folded fleeing into the catch response instead.
+   Explanation: not a real gap in play - mark them as client-code leftovers.
+
+6. Native push notifications
+   The 2016 service pushed notifications to the phone (e.g. "Your Pokemon
+   has been kicked out of a Gym", "A raid/defender event", server
+   announcements). This server is a LAN/offline server with no push channel
+   to the mobile OS.
+   Explanation: all in-game feedback (coins sent home, journal entries)
+   happens when you next open the game. There is no OS-level notification
+   architecture.
+
+7. Real Google / Pokemon Trainer Club account login
+   The server's SSO accepts ANY username/password and stamps the username
+   into the token. There is no verification against Google/PTC.
+   Explanation: the July 2016 service authenticated real accounts and tied
+   your avatar to your identity. Here, login is freeform and login=
+   account-creation for testing. Careful: this also means there is no
+   account recovery or suspension system.
+
+8. Captcha / anti-cheat gate and soft-bans
+   The server answers CHECK_CHALLENGE with "no challenge" and applies no
+   soft-bans.
+   Explanation: the August-2016 anti-cheat wave (captcha challenges,
+   distance/velocity soft-bans, shadow bans) is deliberately absent. Request
+   handling is simplified to keep every client happy.
+
+9. The authentic 2016 world geography (stops, gyms, spawn points)
+   The real launch game used Niantics production spawn points and stop/gym
+   locations (their own OSM-derived and cell-based placement) everywhere on
+   Earth. This server generates stops/gyms from fixed cell centres, OSM POIs
+   you download, and hand-placed ones, and rolls wild spawns from rarity/
+   biome tables.
+   Explanation: the same neighbourhood will NOT match the 2016 map exactly.
+   Density, rarity and biomes are modelled to feel authentic, but the
+   specific coordinates are synthetic.
+
+================================================================================
+PART B - FEATURES ONLY PARTIALLY IMPLEMENTED, OR IMPLEMENTED DIFFERENTLY
+================================================================================
+
+10. The 3-step footprint "Sightings" tracker
+    In July 2016 the Sightings panel showed the 3-grass footprint icon that
+    shrank to 2, then 1, as you approached a Pokemon. The server instead
+    feeds the nearby panel with measured straight-line distances (up to
+    `sightings_radius_m`, default 200 m) at the Pokemon's real position.
+    Explanation: you still get a nearby list with real range and the
+    "hunting" navigation feel, but the shrinking-footprint mechanic itself
+    is not reproduced.
+
+11. Gym battle presentation
+    README-documented limitation: an enemy-gym battle is reported to the
+    client as a TRAINING battle, and the defending Pokemon's counter-attack
+    animation never plays on the device.
+    Explanation: the 0.29 client simulates gym combat on the phone and
+    ignores the battle actions the server sends, so the server dictates the
+    true outcome, HP and prestige, but the on-screen defender animation is
+    up to the client and stays broken. Fights are real; the animation is
+    not.
+
+12. 3D Pokemon models
+    The client renders real 3D models ONLY when you supply the genuine 2016
+    asset bundles (GET_ASSET_DIGEST -> GET_DOWNLOAD_URLS -> serve encrypted
+    bundle is fully implemented, but the copyrighted assets are not bundled).
+    Explanation: with no bundle, creatures fall back to the client's 2D
+    icons. Catching, stops and gyms work regardless. This is an asset-
+    supply limitation, not a logic gap.
+
+13. Stop photos / fort images
+    2016 stops showed the original Google Street-view-style fort photos.
+    Here stops are cosmetic unless an admin attaches a custom image in the
+    World Manager.
+    Explanation: the authentic photo database is not included; the pipe for
+    displaying a custom image exists.
+
+14. Wild-spawn and CP authenticity
+    Spawns use the 2016 rarity table, nests, day/night and biomes, and CP is
+    capped to what each species can reach -- but the exact per-metre spawn
+    pattern and the old +/-30 CP "common wild CP" model is approximated, not
+    byte-for-byte Niantics.
+    Explanation: tuned to 2016 targets, not a 1:1 clone of Niantics spawn
+    server.
+
+15. "Every request answered" vs "every feature done"
+    The protocol list comments that all 71 client request types get a reply
+    (including usertalent: ECHO, DEBUG_*, SFIDA_ACTION_LOG/Journal). Those
+    are answered as stubs/no-ops rather than full features.
+    Explanation: the network handshake is 100% complete, but answering a
+    request politely is not the same as implementing the feature behind it.
+    The genuinely missing ones are in Parts A and B.
+
+================================================================================
+ITEMS CHECKED AND PRESENT (so you know they were NOT forgotten)
+================================================================================
+Login, codename + avatar creation, full 0.29 boot handshake, live map at
+real GPS, catching with throw scoring + Razz Berry, PokeStops (spin, loot,
+eggs, cooldown), Lure Modules, Incense, Lucky Egg, Gyms (deploy, train,
+prestige, battle, recall, defender bonus/coins), teams (Mystic/Valor/
+Instinct), team choice at level 5, Pokemart-style in-game shop with the
+authentic 2016 SKUs, bag upgrades, Pokemon storage upgrades, incubators
+(unlimited + 3-use basic), egg hatching by walked distance, evolve /
+power-up / transfer / favorite / nickname, Eevee Rainer/Sparky/Pyro trick,
+Pokedex, medals/badges (2016 targets) + badge equip, level-ups and paid-
+once level rewards, daily defender bonus, Journal (SFIDA_ACTION_LOG),
+remote config / settings / item templates endpoints, World Manager + server
+console, Help Center & status site, raids (a simulated mode; raids were NOT
+a July 2016 feature).

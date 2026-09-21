@@ -1,0 +1,277 @@
+================================================================================
+ NODESTOCK (Windstock -> POGOserver 2) — MASTER REWRITE PROMPT + SESSION PROTOCOL
+ Root file that is PREPENDED to every session's prompt. Do not delete.
+ ================================================================================
+
+ YOU ARE: the lead engineer for a from-scratch, byte-for-byte faithful port of the
+ "Windstock" Pokémon GO (0.29/0.35) private server from Python 3 to Node.js 21,
+ REBRANDED as "POGOserver 2". "POGOserver 2" is the project's new public name and
+ must replace "Windstock" everywhere user-facing. Nothing is out of scope: server,
+ protocol, database, web UI, CLI, tools, patcher.
+ The Python code in this repo is the ONLY specification. Port it literally.
+
+ REBRAND CONTRACT (do this in every session, for every file you touch):
+   - All user-facing text says "POGOserver 2": README, web pages, World Manager
+     UI, slash-console banner/help text, help center, CLI output, package.json
+     name/description, the launcher title, log banners, "Start-Pokemon-GO-Server"
+     spec/scripts, paths.py/config module names it introduces, comments that would
+     show in logs, and any settings.json default display names.
+   - Directory/package naming: keep import paths identical to the Python layout
+     (renames break the port); only the public display names change. Do not
+     rewrite technical identifiers to fit the brand — only text humans see.
+   - Log a record of every rebranded string under "Rebrand" in that session's
+     REWRITE_STATE.md entry so nothing is missed and nothing is double-done.
+
+YOUR JOB PER SESSION: exactly ONE module from the CHUNK PLAN below. Do the
+module completely. Update REWRITE_STATE.md (the master blueprint) when done.
+Never leave the session with the blueprint older than your work.
+
+--------------------------------------------------------------------------------
+0. NON-NEGOTIABLE RULES (violating these = failure)
+--------------------------------------------------------------------------------
+1. WIRE-FORMAT FIDELITY. The bytes on the wire must match the Python server
+   exactly. Do NOT "improve" or "modernize" the protocol. Do NOT "fix" field
+   numbers that differ from public POGOProtos — they were verified against the
+   live client. Known intentional differences you MUST preserve:
+     - RequestEnvelope.requests is field #4 (not #3)
+     - PokemonData.id is a fixed64 (not int32)
+     - Everything in src/server/windstock/game/pb.py is ground truth.
+2. Node.js 21 ONLY. ESM ("type":"module"). Use node: builtins
+   (node:http, node:https, node:net, node:tls, node:crypto, node:dns,
+   node:child_process, node:fs, node:sqlite is NOT allowed — Node 21 lacks it).
+   Zero-dependency is preferred. ALLOWED external packages ONLY:
+     mysql2        (MariaDB driver)
+     better-sqlite3(SQLite, replaces database.py SQLite backend + server storage)
+     (everything else must use node core. If you think something else is
+      required, implement it yourself and note it in the blueprint.)
+3. NO Python runtime. No exec'ing python, no python subprocesses, no py files.
+   Tools that were Python are ported to JS. The only external programs allowed:
+   openssl (via child_process) for certs, npx apk-mitm (the patcher's job).
+4. Behavior parity over code brevity. When unsure what the Python does, read it
+   and copy behavior exactly. Note assumptions in the blueprint.
+5. No dead ends. A session must always leave runnable code. Any optional/unbuilt
+   path must throw a clear `new ERRNOTIMPLEMENTED("MODULE.PATH — see REWRITE_STATE.md")`.
+6. Data files stay data. settings.json, places.json, biomes.json, cpdata.json,
+   saves/*.json, certs/, data/osm_biomes.json keep their names and formats.
+7. Never stop to ask the user for routine decisions. Decide, implement, log the
+   decision in REWRITE_STATE.md under "Decisions". Only stop for a genuinely
+   ambiguous protocol meaning that no file in the repo clarifies.
+
+--------------------------------------------------------------------------------
+1. THE BLUEPRINT MECHANISM (how sessions remember each other)
+--------------------------------------------------------------------------------
+File: REWRITE_STATE.md (repo root). It is the project's long-term memory and
+inter-module contract. Structure it in reverse-chronological session entries:
+
+  ## Session NN — <module name>  (date, model used)
+  ### Exported API
+    - exact module names / exports / signatures (types = JS docs comments)
+  ### Contracts relied on
+    - what this module imports from not-yet-built modules and the exact shape
+      it expects (so a later session can match it)
+  ### Decisions
+    - every behavioral call made while porting (field sizing, error text, etc.)
+  ### Stubs created
+    - anything thrown as ENOTIMPLEMENTED and who must fill it
+  ### TODO
+    - open items the next sessions inherit (keep this list SHORT)
+
+Each session reads this file first, ports its module to match the contracts in
+"Contracts relied on" exactly, and finishes by appending a fresh "Session NN"
+entry. Do not rewrite past entries; append only. When an earlier session turns
+out wrong, note it in the new entry and fix it in the code (code beats notes).
+
+--------------------------------------------------------------------------------
+2. CHUNK PLAN (fixed build order — later modules import earlier ones)
+--------------------------------------------------------------------------------
+Port in install order. "Stub" = write the export with a throwing body now.
+
+  00  Skeleton infrastructure
+      package.json (ESM, engines node>=21), REWRITE_STATE.md seed, logging
+      module, error hierarchy, test harness (node:test), npm scripts.
+      Output: `npm test` runs green with one smoke test.
+
+  01  pb.js — protobuf reader/writer
+      Port src/server/windstock/game/pb.py verbatim. This is the codec EVERYTHING
+      uses. Build byte-exact fixtures: capture encode/decode pairs as hex strings
+      (from the Python semantics, hand-crafted for varint, fixed64, packed,
+      nested, repeated) into test/fixtures/pb.json. This is the most tested file
+      in the project. Wire helpers = the public interface you test first.
+
+  02  config/  (paths, settings, places, events)
+      Port config/paths.py, config/settings.py (incl. hot-reload watcher),
+      config/places.py, config/events.py. Expose a config object consumed by all.
+
+  03  geo/    (S2, biomes, pois, poidownload)
+      - S2: implement the S2 cell math in pure JS (port what s2sphere was used
+        for — you do NOT get to use the npm package). Cover lat/lng <-> cellid,
+        covering for the map cells used by geo/biomes and geo/pois. Write unit
+        tests with known lat/lng -> hex cellid vectors.
+      - biomes.py, pois.py, poidownload.py: same behavior; OSM Overpass via
+        node:http, cached like the Python does. osmium is NOT ported — if OSM PBF
+        parsing is needed, implement a minimal PBF decoder (varint/zigzag tiles)
+        in JS and note it. Prefer the same Overpass path the Python used.
+
+  04  database — the backup/restore tool (database.py) + server persistence
+      Port database.py (MariaDB via mysql2 + SQLite via better-sqlite3, same
+      console commands) AND the save/load logic that world.py serializes
+      (data/saves/<name>.json, same on-disk shape).
+
+  05  game data  (gamedata, cpdata, leveling, shop core)
+      No protocol yet — just pure computations and tables. Export lookups and
+      level/IV math that rpc.py will call. Unit-test the level curve numbers.
+
+  06  protocol.js — THE BIG ONE (MANDATORY CHUNK CHAIN, NEVER one session)
+      Port src/server/windstock/game/protocol.py (~292 KB). It is the heart.
+      HARD RULE: protocol.py MUST ALWAYS be ported across multiple sessions in
+      an unbroken CHUNK CHAIN. No single session ever touches all of it. Each
+      session ports exactly ONE complete top-level group and ends by writing
+      NEXT_PROMPT.md that assigns the NEXT protocol chunk as the next session
+      (06a -> 06b -> 06c -> ...), with the exact next range of the Python file,
+      until the file is fully covered and the chunk chain is marked done.
+      Required chunk split (never renegotiate the order):
+        06a  handshake + map builders
+        06b  encounter + catch
+        06c  gyms
+        06d  shop + inventory
+        06e  every remaining request type + asset digest/settings builders
+      Count every request type the Python handles across the chain — every one
+      gets a builder, and the last chunk (06e) audits ALL of them against a
+      checklist in REWRITE_STATE.md to prove none were dropped between chunks.
+      This module ONLY builds responses; it imports pb.js and config and world.
+      The chunk chain has TOP PRIORITY: while protocol.js is unfinished, the
+      NEXT_PROMPT.md must ALWAYS point at the next protocol chunk — no other
+      module may jump the queue.
+
+  07  rpc.js — protocol routing
+      Port game/rpc.py: the boot handshake sequence (redirect -> player ->
+      remote config -> settings -> asset digest -> item templates -> map), the
+      71 request types dispatched, and error handling. Wire protocol entrypoint
+      is the request/response envelope. Byte-for-byte request handling.
+
+  08  world.js — shared state
+      Port game/world.py: per-account inventory/pokemon/xp, shared gyms,
+      atomic item operations, save-to-disk lifecycle, deleting a save resets
+      the player. Must be dependency-injected so rpc and web both use it.
+
+  09  net/  (server, sso, sso_bridge, dns_redirect, certs)
+      - TLS listener that routes by Host header (game vs PTC hosts).
+      - Fake PTC SSO (any creds, username embedded in token).
+      - 0.35 SSO bridge (plain-HTTP login).
+      - DNS redirector (node:dns or a raw UDP responder on port 53 answering
+        for Niantic/PTC hosts, forwarding everything else) — port behavior.
+      - cert generation via openssl child_process (same certs/ layout).
+      First milestone: the full fake-client probe (port tools/test_login.py and
+      probe.js end-to-end flows) passes.
+
+  10  web/  (website, helpcenter, admin, webui = World Manager)
+      Port helpcenter.py, website.py, admin.py, webui.py. admin.py is ~50 KB —
+      may be split, but one logical area per session. Serve SAME URLs/routes on
+      node:http. The World Manager forms/endpoints keep their semantics.
+
+  11  cli + ui  (console.py, pogo_manager.py, theme, logfile, network)
+      The slash-console (World Manager cli) ports 1:1. pogo_manager.py is a
+      CustomTkinter window — in Node 21 there is NO equivalent: reimplement it
+      as a terminal status screen (or a simple local web page) with the SAME
+      controls and information, and RECORD this one allowed UI divergence in
+      REWRITE_STATE.md under Decisions. Keep the slash-console byte-identical.
+
+  12  tools/  (convert_gm, metadata*, asset/bundle, download helpers, etc.)
+      src/tools/* standalone scripts become node CLIs (single-file, node:
+      scripts) with the same CLI args and same output files. convert_gm.py must
+      regenerate the same item-template db format. Patcher (src/patcher) becomes
+      a CLI that shells out to `npx apk-mitm` (it already requires Node).
+      DOWNLOAD.py becomes a lightweight node installer for the deps above.
+
+  13  integration + FROZEN status
+      Run a headless phony client against the full stack (DNS -> TLS -> SSO ->
+      RPC) covering the boot handshake and one full record of map/catch/fort/
+      gym/shop/inventory. `npm test` fully green. REWRITE_STATE.md now contains
+      a runnable quick-start (npm run setup | npm start). Mark total parity of
+      every file in the CHUNK PLAN checklist at the top of the state file.
+
+--------------------------------------------------------------------------------
+3. ANTI-STUCK RULES (read these before every session)
+--------------------------------------------------------------------------------
+- **Unlimited tokens do NOT mean infinite context.** Keep REWRITE_STATE.md
+  tight: interfaces, not prose. THE BIG BLUEPRINT is contract-only and
+  scannable in one read (< ~5 min); expand it, never duplicate it.
+- **Never block on an un-built dependency.** If session 06 needs world.js and
+  08 isn't built yet: import it as `import * as world from '../game/world.js'`
+  even if the file is only a stub of throwing functions, and code against the
+  CONTRACT you wrote down. That contract is binding; 08 must match it.
+- **Never ask the user anything that has an answer in this repo.** Read files
+  until the answer is found. If truly undecidable, pick the behavior that
+  preserves client compatibility, log it, move on.
+- **One logical task per session.** Splitting protocol.py is fine; splitting a
+  mid-function is not. Finish a unit of work to a test-passing, runnable state.
+- **Big files split by surface, not by line.** A 5,000-line module becomes
+  folder modules (e.g. game/protocol/handshake.js, encounter.js) re-exported
+  through an index.js. Never duplicate logic across them.
+- **Always leave the tree in a state where `npm test` runs.** Pending work is a
+  throwing stub + a TODO line, not a comment saying "later".
+- **If tests fail, fix the tests' expectations only when the PYTHON code proves
+  the test wrong.** Python is truth. The test harness reproduces Python
+  behavior; do not rewrite the harness to fit a sloppy port.
+- **Output the report in the required format** (below), no excuses, even if
+  partial. A written report beats silence.
+
+--------------------------------------------------------------------------------
+4. PER-SESSION PROMPT TEMPLATE (paste this into each new session)
+--------------------------------------------------------------------------------
+"""
+Project: Windstock -> Node.js 21 rewrite, one module per session.
+Read these first, in order:
+  1. NODE21_REWRITE_PROMPT.txt   (this file — rules + chunk plan + #02 sections)
+  2. REWRITE_STATE.md            (master blueprint - the memory of all previous sessions)
+  3. The Python sources for the module assigned below (literal spec).
+
+This session's assigned module: %MODULE_NAME% from chunk step %NN%
+Port it COMPLETELY and LITERALLY to Node 21 following the non-negotiable rules.
+Check "Contracts relied on" in REWRITE_STATE.md and match those shapes.
+Deliverables (in order):
+  a) The ported module(s) under the target directory in src/,
+     ESM, using allowed deps only, runnable.
+  b) Tests under test/ covering its public surface (node:test).
+     Byte-compare against fixtures where protocol bytes are involved.
+  c) `npm test` green (your module's tests pass; stubs throw cleanly elsewhere).
+  d) REWRITE_STATE.md updated: append "Session NN" entry with Exported API /
+     Contracts relied on / Decisions / Stubs created / TODO / Rebrand.
+  e) WRITE THE NEXT SESSION'S HANDOFF (mandatory, two files):
+       e1) NEXT_PROMPT.md  — a complete, self-contained prompt for the NEXT
+           session, ready to paste into a fresh chat with zero editing:
+           its assigned module + step number, which Python files it must read,
+           which contracts in REWRITE_STATE.md bind it, which stubs it must
+           fill, what decisions it inherits, and the same Deliverables (a)-(e)
+           list. It must include ANYTHING from this session that the next AI
+           cannot be expected to know.
+           CHUNK-CHAIN CLAUSE: if this session was a protocol.py chunk (06a-e)
+           and the chain is not finished, NEXT_PROMPT.md MUST assign the next
+           protocol chunk (06x) as the next session's sole module, state the
+           exact line range / builder group still owed, and repeat this clause
+           so the chain continues automatically until protocol.js is complete.
+       e2) THE BIG BLUEPRINT — expand every "Contracts relied on" line from
+           this session into full interface definitions (signatures, types,
+           data shapes, field layouts, byte formats, error codes) for ALL
+           modules still unbuilt. This blueprint lives at the top of
+           REWRITE_STATE.md as "THE BIG BLUEPRINT" and grows with every
+           session; the next AI reads it BEFORE anything else. Keep it
+           structured as pure contract — no prose, scannable in one read.
+Rules: never ask me for routine decisions; on genuine ambiguity pick the
+client-compatible behavior, note it, continue. Do not stop until (a)-(e) done.
+"""
+
+--------------------------------------------------------------------------------
+5. DEFINITION OF DONE (a session is NOT done without all of these)
+--------------------------------------------------------------------------------
+[ ] Module ported literally, ESM, Node 21, allowed deps only.
+[ ] Unit tests present and passing for its public surface.
+[ ] A contract entry appended to REWRITE_STATE.md.
+[ ] No new dead code: stubs throw ENOTIMPLEMENTED with a file path.
+[ ] Byte-level protocol behavior preserved where the module touches the wire.
+[ ] NEXT_PROMPT.md written (clean, paste-ready next-session prompt) and THE BIG
+    BLUEPRINT in REWRITE_STATE.md extended with this session's full contracts
+    for every unbuilt module.
+[ ] `npm test` runs green and `node --check` (or equivalent) passes on every
+    file you added.
+================================================================================
