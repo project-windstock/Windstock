@@ -125,6 +125,16 @@ DEFAULTS = {
         "defender_heal_minutes": 30,
         "defender_coins": 20,
         "max_defenders": 6,
+        # Rival defenders for gyms nobody holds. Without them a gym is EMPTY,
+        # and an empty gym cannot be battled at all -- the client only offers
+        # to deploy into it, which is why gym battles did nothing on a fresh
+        # server. 0 turns them off and restores the old behaviour.
+        "npc_defenders": 2,
+        "npc_min_cp": 300,
+        "npc_max_cp": 1200,
+        # How long a gym stays yours-for-the-taking after you beat the rivals,
+        # before a new set moves in.
+        "npc_respawn_minutes": 60,
         # The Shop's shield ("defender bonus"): what you collect per gym you're
         # holding, once every `cooldown_hours`, up to `max_gyms` gyms. The 2016
         # values were 10 coins + 500 stardust per gym, 10-gym cap, 21-hour timer.
@@ -268,6 +278,9 @@ DEFAULTS = {
     "shiny": {
         "enabled": True,
         "rate": 0.0022,             # ~1 in 450, the real game's base shiny rate
+        "charm_multiplier": 2.0,    # Shiny Charm: permanent, bought once
+        "incense_multiplier": 10.0, # Shiny Incense: while it burns
+        "incense_minutes": 30.0,
     },
     "shop": {
         "price_multiplier": 1.0,    # 0.5 = half price, 2.0 = double
@@ -293,6 +306,16 @@ DEFAULTS = {
         "windy_kmh": 24.0,
         "force": "",
     },
+    "radar": {
+        # Seconds you must wait between radar sweeps -- the Help Center's radar,
+        # the Radar tab in game and the desktop /radar page all share it, so a
+        # sweep in one counts in the others. 0 = no cooldown, sweep as often as
+        # you like. The genuine feel was 60; the only cost of 0 is that each
+        # sweep seeds spawns for the circle around you, which is work.
+        "cooldown_seconds": 0,
+        # How far a sweep reaches, in metres.
+        "range_m": 500.0,
+    },
     "distances": {
         # How far you can reach, in metres. These ship to the client inside
         # GlobalSettings; the client enforces them, the server never checks your
@@ -302,6 +325,16 @@ DEFAULTS = {
         "pokemon_visible_m": 70.0,     # how far wild Pokemon are DRAWN
         # Raising pokemon_visible_m alone shows nothing new unless Pokemon
         # actually spawn out there -- see spawns.farthest_distance_m.
+    },
+    "map": {
+        # The Google Maps key the client uses to fetch the map's ROADS. It is
+        # handed over in GlobalSettings.map_settings.google_maps_api_key, and
+        # it was hardcoded to "" for years -- so the client asked Google for
+        # tiles with no key, got refused, and drew flat green ground with no
+        # roads, water or buildings. Nothing else in the game depends on it.
+        # Niantic's own 2016 key is long dead; put a working one here if you
+        # have one. Blank keeps the old behaviour.
+        "google_maps_api_key": "",
     },
     "progression": {
         # true = brand-new trainers run the real 2016 onboarding (legal screen,
@@ -511,6 +544,11 @@ _README = [
     "   enabled .............. false = no shinies",
     "   rate ................. chance a spawn is shiny (0.0022 = ~1 in 450). Decided ONCE",
     "                          per spawn, so re-tapping or re-finding it never rerolls",
+    "   charm_multiplier ..... Shiny Charm (shop, bought once, permanent) scales the rate",
+    "   incense_multiplier ... Shiny Incense (shop) scales the rate while it burns; it",
+    "                          stacks with the charm, and only affects spawns you meet",
+    "                          while it is running",
+    "   incense_minutes ...... how long a Shiny Incense lasts",
     "",
     "shop:",
     "   price_multiplier ..... scales every price in the in-game shop",

@@ -97,7 +97,19 @@ _cells = {"mtime": None, "map": {}, "level": 12}
 _cache = {}                      # region-cell id -> biome name (memoised lookups)
 
 
+def _db():
+    """world.sqlite, when there is no osm_biomes.json to read -- the phone,
+    where loading the JSON costs ~477 MB of heap. See worlddb.py."""
+    if os.path.exists(_TERRAIN_FILE):
+        return None
+    import worlddb
+    return worlddb if worlddb.path() else None
+
+
 def _load_cells():
+    db = _db()
+    if db is not None:
+        return (db.BiomeCells() if db.has_biomes() else {}), db.biome_level()
     try:
         m = os.path.getmtime(_TERRAIN_FILE)
     except OSError:
@@ -120,6 +132,16 @@ def _load_cells():
 
 
 def _load_terrain():
+    db = _db()
+    if db is not None:
+        # a handful of points (104 in the US file), so memory is not a concern
+        # keyed on the installed packs, so a newly downloaded one is picked up
+        key = ("db", tuple(db.paths()))
+        with _tlock:
+            if _terrain["mtime"] != key:
+                _terrain["mtime"], _terrain["pts"] = key, db.terrain_points()
+                _cache.clear()
+            return _terrain["pts"]
     try:
         m = os.path.getmtime(_TERRAIN_FILE)
     except OSError:

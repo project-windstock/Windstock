@@ -45,7 +45,16 @@ CATALOGUE = [
     ("incubatorbasic.1",        "Egg Incubator",       902,   1,  150, "incubator",   0),
     ("itemstorageupgrade.1",    "Bag Upgrade (+50)",     0,  50,  200, "bag",         0),
     ("pokemonstorageupgrade.1", "Pokemon Storage (+50)", 0,  50,  200, "box",         0),
+    ("shinycharm.1",            "Shiny Charm",           0,   1, 1000, "shinycharm",  0),
+    ("shinyincense.1",          "Shiny Incense",         0,   1,  180, "shinyincense",0),
 ]
+
+# Ported from Kanto, which sells the same two. They are WEB-SHOP ONLY: the SKU is
+# what the in-game store matches its bundled sprite against, and the 2016 store
+# never sold these, so in the native shop they would be blank tiles. The web page
+# draws its own art, so that is where they live. purchase() still honours the SKU
+# if one ever comes back from the client.
+WEB_ONLY = {"shinycharm.1", "shinyincense.1"}
 
 # Item art is the REAL 2016 texture, pulled out of the APK's Unity assets
 # (sharedassets0 -> Texture2D "Item_0001" etc, which are named by item id) and
@@ -88,6 +97,33 @@ def icon_version():
 # Storage upgrades have no bag item, so they yield the storage-upgrade ItemIds.
 # storage-upgrade skus -> their ItemId (ITEM_ITEM_STORAGE_UPGRADE / _POKEMON_)
 _STORAGE_ITEM = {"itemstorageupgrade.1": 1002, "pokemonstorageupgrade.1": 1001}
+
+
+def grant_special(sku, price):
+    """The iid == 0 items: nothing goes in the bag, something changes on the
+    account instead. (ok, message). Shared by the web shop and purchase().
+
+    Storage upgrades charge their OWN cost inside world.buy_storage(), so only
+    the shiny pair is charged here -- and only once whatever they grant has
+    actually succeeded, so a refused purchase never takes coins.
+    """
+    import settings as _cfg
+    import world
+    if sku not in ("shinycharm.1", "shinyincense.1"):
+        ok, message, _new = world.buy_storage(_storage_kind(sku))
+        return ok, message
+    if sku == "shinycharm.1":
+        if world.has_shiny_charm():
+            return False, "You already have the Shiny Charm."
+    elif world.shiny_incense_ms_left() > 0:
+        return False, "A Shiny Incense is already burning."
+    if not world.spend_coins(price):
+        return False, f"You need {price} Pok\u00e9Coins."
+    ok, message = (world.grant_shiny_charm() if sku == "shinycharm.1" else
+                   world.start_shiny_incense(_cfg.get("shiny", "incense_minutes", cast=float)))
+    if not ok:
+        world.add_coins(price)                     # lost a race; nothing granted
+    return ok, message
 
 
 def _storage_kind(sku):
@@ -159,7 +195,7 @@ def build_platform_shop(coins, stardust):
     import pb
 
     inner = pb.Writer().uint(1, 1)                        # unknown1 = 1 (success)
-    for sort, entry in enumerate(CATALOGUE, 1):
+    for sort, entry in enumerate([e for e in CATALOGUE if e[0] not in WEB_ONLY], 1):
         sku, _label, iid, cnt, price, _icon, _was = entry
         inner.message(2, _store_item_bytes(sku, iid, cnt, shop_price(price), sort))
     inner.message(3, _currency("POKECOIN", coins))        # player_currencies
@@ -184,9 +220,8 @@ def purchase(item_id):
     if not entry:
         return False, f"unknown item {sku}"
     _sku, label, iid, cnt, price, _icon, _was = entry
-    if iid == 0:                                    # a storage upgrade
-        ok, message, _new = world.buy_storage(_storage_kind(sku))
-        return ok, message
+    if iid == 0:                                    # storage upgrade / shiny charm / incense
+        return grant_special(sku, shop_price(price))
     if world.room_in_bag() < cnt:
         return False, f"bag full ({world.bag_count()}/{world.MAX_ITEMS})"
     price = shop_price(price)
@@ -472,8 +507,8 @@ def handle(method, path, query, headers, body, log):
         _sku, label, iid, cnt, price, _icon, _was = entry
         price = shop_price(price)
         with world.acting_as(who):
-            if iid == 0:                                   # a storage upgrade
-                ok, message, _new = world.buy_storage(_storage_kind(_sku))
+            if iid == 0:                                   # storage / shiny charm / incense
+                ok, message = grant_special(_sku, price)
                 log(f"[shop] {who}: {label} -> {message}")
                 return _json({"ok": ok, "message": message, "coins": world.COINS})
             if world.room_in_bag() < cnt:

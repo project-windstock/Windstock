@@ -22,9 +22,25 @@ _lock = threading.RLock()
 _cache = {"mtime": None, "forts": [], "by_cell": None}
 
 
+def _use_db():
+    """The JSON file wins when it exists (the desktop: poidownload writes it and
+    this hot-reloads it). Without it -- the phone -- fall back to the cell-indexed
+    world.sqlite, which answers per cell instead of holding 1.1M forts in RAM."""
+    if os.path.exists(POIS_FILE):
+        return False
+    import worlddb
+    return worlddb.path() is not None
+
+
 def forts():
     """Every OSM fort, or [] if there's no file yet. Cheap: only re-reads the file
-    when its mtime changes."""
+    when its mtime changes.
+
+    With only world.sqlite this materialises the whole table -- ~1 GB -- so
+    nothing on a hot path may call it. Use forts_by_cell() or near()."""
+    if _use_db():
+        import worlddb
+        return worlddb.all_forts()
     with _lock:
         try:
             m = os.path.getmtime(POIS_FILE)
@@ -63,7 +79,13 @@ def forts_by_cell():
     a few thousand and several million forts staying instant.
 
     Uses the "cell" precomputed by the grab tools; for an older file without it, the
-    ids are computed here once and cached (still O(N) once, not per request)."""
+    ids are computed here once and cached (still O(N) once, not per request).
+
+    With world.sqlite instead of the JSON, returns a lazy stand-in whose .get()
+    is one indexed query -- the only way callers use this."""
+    if _use_db():
+        import worlddb
+        return worlddb.CellIndex()
     with _lock:
         forts()                                     # refresh cache if the file changed
         if _cache["by_cell"] is None:
@@ -91,3 +113,22 @@ def forts_by_cell():
                     continue
             _cache["by_cell"] = idx
         return _cache["by_cell"]
+
+
+def near(lat, lng):
+    """Forts in the level-15 cell containing (lat, lng) and its eight
+    neighbours -- a ~1.5 km square, plenty for "the closest place within
+    250 m". Replaces walking every fort in the file, which was a 1.1M-item
+    linear scan on the desktop and a 1 GB load on the phone."""
+    try:
+        import s2sphere
+        cell = s2sphere.CellId.from_lat_lng(
+            s2sphere.LatLng.from_degrees(lat, lng)).parent(15)
+        ids = [cell.id()] + [n.id() for n in cell.get_all_neighbors(15)]
+    except Exception:
+        return []
+    idx = forts_by_cell()
+    out = []
+    for cid in ids:
+        out.extend(idx.get(cid) or [])
+    return out

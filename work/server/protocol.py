@@ -524,7 +524,7 @@ def build_get_inventory_response(since_ms=0) -> bytes:
         if n > 0:
             items.append(_inventory_item(
                 10, pb.Writer().uint(1, fam).int_(2, n).to_bytes(), now))
-    _act = world.applied_items()
+    _act = world.client_applied_items()
     if _act:                                                         # applied_items
         _aw = pb.Writer()
         for _a in _act:
@@ -538,7 +538,15 @@ def build_get_inventory_response(since_ms=0) -> bytes:
         for _i in _incs:
             _iw.message(1, build_incubator(_i))
         items.append(_inventory_item(9, _iw.to_bytes(), now))
-    for _pid, _seen, _caught in world.pokedex():                     # pokedex_entry
+    # pokedex_entry -- one for EVERY species, not just the ones seen. The client
+    # builds the Pokedex screen from these entries, so sending only what the
+    # trainer had met showed a Pokedex with 23 slots in it instead of 151 with
+    # silhouettes for the rest. Unmet species go out as seen=0/caught=0, which
+    # is what an unseen entry means, so this adds slots without claiming any of
+    # them have been found.
+    _seen_counts = {int(_p): (_s, _c) for _p, _s, _c in world.pokedex()}
+    for _pid in range(KANTO_MIN, KANTO_MAX + 1):
+        _seen, _caught = _seen_counts.get(_pid, (0, 0))
         items.append(_inventory_item(3, pb.Writer()
                                      .uint(1, _pid).int_(2, _seen)
                                      .int_(3, _caught).to_bytes(), now))
@@ -1305,7 +1313,7 @@ def build_use_item_xp_boost_response(item_id) -> bytes:
     w = pb.Writer().uint(1, code)
     if code == 1:
         aw = pb.Writer()
-        for a in world.applied_items():
+        for a in world.client_applied_items():
             # AppliedItemsProto.Item is field 4, NOT 1. Field 1 is what
             # AppliedItemProto uses internally; putting the list there meant the
             # client read an EMPTY set of active items and showed no buff at all.
@@ -4870,7 +4878,8 @@ def build_download_settings_response() -> bytes:
                     .float_(4, 10.007843017578125)      # get_map_objects_min_refresh_seconds
                     .float_(5, 11.01568603515625)       # get_map_objects_max_refresh_seconds
                     .float_(6, 10.007843017578125)      # get_map_objects_min_distance_meters
-                    .string(7, "")                      # google_maps_api_key (ours: none)
+                    .string(7, _cfg.get("map", "google_maps_api_key",
+                                        env="GOOGLE_MAPS_API_KEY", cast=str) or "")
                     .to_bytes())
     inventory_settings = (pb.Writer()
                           .int_(1, 1000)                # max_pokemon

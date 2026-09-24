@@ -180,6 +180,82 @@ def resolve(nom_id, status):
 # upcoming one the manager scheduled. The manager mirrors its pending schedule
 # into event_schedule.json next to the server so this page can read it -- the
 # schedule itself is timed inside the manager, this is just the read-out.
+# ---------------------------------------------------------------- radar
+# One scan a minute, per trainer, enforced HERE -- the page also counts down, but
+# that is only so the button looks honest; a reloaded page must not buy a scan.
+# Defaults; the live values come from settings (radar.cooldown_seconds /
+# radar.range_m) so they can be changed without a restart. Kept as module
+# constants too because other modules still read them.
+RADAR_COOLDOWN_MS = 60 * 1000
+RADAR_RANGE_M = 500.0
+
+
+def radar_cooldown_ms():
+    try:
+        import settings
+        return max(0, int(settings.get("radar", "cooldown_seconds", cast=int))) * 1000
+    except Exception:
+        return RADAR_COOLDOWN_MS
+
+
+def radar_range_m():
+    try:
+        import settings
+        return max(50.0, float(settings.get("radar", "range_m", cast=float)))
+    except Exception:
+        return RADAR_RANGE_M
+_radar_last = {}                                 # player -> ms of their last scan
+
+
+def radar_cooldown_left(player):
+    with _lock:
+        last = _radar_last.get(player, 0)
+    left = last + radar_cooldown_ms() - _now_ms()
+    return max(0, int(left))
+
+
+def _radar_scan(player):
+    """What `player` can see around them right now, or None if we don't know
+    where they are yet (they have not opened the game since the server started).
+
+    Ground nobody has asked the map about holds nothing, so the sweep fills its
+    own circle first -- a patch at a time, skipping anything already done for
+    this spawn window. Standing still and sweeping again works through the rest
+    rather than turning up the same empty ground.
+    """
+    import world
+    world.use(player)                            # is_despawned reads the current account
+    loc = world.player_location(player)
+    if loc is None:
+        return None
+    lat, lng = loc
+    import spawnfill
+    try:
+        seeded, left = spawnfill.fill(lat, lng, radar_range_m())
+    except Exception:
+        seeded, left = 0, 0
+    import shiny as _shiny
+    rows = []
+    for s in world.spawns_near(lat, lng, radar_range_m()):
+        pid = int(s.get("pokemon_id") or 0)
+        rows.append({
+            "pokemon_id": pid,
+            "name": _DEX[pid] if 1 <= pid < len(_DEX) else f"#{pid}",
+            "lat": s["lat"], "lng": s["lng"],
+            "distance_m": round(s["distance_m"]),
+            "expires_ms": int(s.get("expires_ms") or 0),
+            # Asking this here settles the spawn's shiny roll at today's rate if
+            # nothing had asked yet -- which is the same answer the encounter
+            # would have given, since shiny.is_shiny remembers its judgement.
+            "shiny": bool(_shiny.is_shiny(s["eid"], pid)),
+        })
+    with _lock:
+        _radar_last[player] = _now_ms()
+    import monart
+    return {"lat": lat, "lng": lng, "range_m": radar_range_m(), "rows": rows,
+            "art": monart.sizes(), "seeded": seeded, "left": left}
+
+
 SCHED_FILE = datadir.path("event_schedule.json")
 
 _DEX = [""] + (
@@ -345,9 +421,53 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
  .ev .b{flex:1}
  .ev .b b{display:block;font-size:15.5px;font-weight:800;color:#22404c}
  .ev .b small{display:block;color:#7d94a1;font-size:12.5px;margin-top:3px;line-height:1.5}
+ .ev .rbtn{flex:none;align-self:center;display:flex;align-items:center;gap:5px;
+  border:0;border-radius:999px;padding:7px 11px 7px 8px;background:#e6f5ef;color:#17705c;
+  font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+ .ev .rbtn:active{transform:scale(.96)}
+ .ev .rbtn .art{width:20px;height:20px;background-size:contain;background-repeat:no-repeat}
  .pill{font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px;
   text-transform:uppercase;background:#dff3e6;color:#1d6f43}
  .empty{color:#9fb2bb;font-size:13px;text-align:center;padding:12px}
+ /* ---------- radar ---------- */
+ #rmap{height:300px;border-radius:12px;margin-top:6px;border:2px solid #e4ecea;
+  background:#eaf3f0}
+ .rhead{display:flex;align-items:center;gap:10px;margin-top:12px}
+ .rhead .n{flex:1;font-size:12.5px;color:#7d94a1}
+ .rhead .n b{color:#22404c}
+ .find{display:flex;align-items:center;gap:10px;padding:10px 0;
+  border-bottom:1px solid #eef3f0;font-size:14px}
+ .find:last-child{border-bottom:0}
+ .find .dot{width:34px;height:34px;border-radius:50%;flex:none;display:grid;
+  place-items:center;font-size:15px;font-weight:800;color:#fff;background:#6f8f9e}
+ .find.sh .dot{background:linear-gradient(160deg,#ffd34d,#f2a03d);
+  box-shadow:0 0 0 3px #fff4d6}
+ .find .t{flex:1}
+ .find .t b{font-size:14.5px;font-weight:800;color:#22404c}
+ .find .t small{display:block;color:#8ba0ab;font-size:11.5px;margin-top:2px}
+ .find.sh .t b{color:#8a6410}
+ .find .d{font-size:12px;font-weight:800;color:#5b7683;background:#f1f6f4;
+  border-radius:999px;padding:5px 10px;flex:none}
+ /* The Pokemon stands ON its disc rather than filling it -- sized to the disc it
+    just reads as a coloured square. Species with no art keep the lettered dot. */
+ .rmon{width:68px;height:64px;position:relative}
+ .rmon .disc{position:absolute;left:50%;bottom:0;width:36px;height:36px;margin-left:-18px;
+  border-radius:50%;background:#fff;border:2px solid #fff;
+  box-shadow:0 2px 6px rgba(20,60,80,.45)}
+ .rmon.sh .disc{background:radial-gradient(circle at 50% 35%,#fff6de,#ffd98a);
+  border-color:#f2a03d;box-shadow:0 0 0 3px #ffeab8,0 2px 6px rgba(20,60,80,.45)}
+ /* Centred on the disc by transform, sized per species in JS -- see monBox. */
+ .rmon img{position:absolute;left:50%;bottom:13px;transform:translateX(-50%);
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
+ .rmon .star{position:absolute;right:4px;top:0;font-size:15px;color:#f2a03d;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;line-height:1}
+ .find .dot img{width:30px;height:30px;object-fit:contain;object-position:50% 100%}
+ .find.sh .dot img{width:32px;height:32px}
+ .rtip{background:#22404c;color:#fff;border:0;border-radius:8px;font-size:11px;
+  font-weight:700;padding:3px 7px;box-shadow:none}
+ .rtip.sh{background:#f2a03d}
+ .rtip:before{display:none}
+ .orb .art.radar,.ev .rbtn .art{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='26' fill='%23e6f5ef' stroke='%2322987c' stroke-width='3'/><circle cx='32' cy='32' r='17' fill='none' stroke='%2322987c' stroke-width='2' opacity='.55'/><circle cx='32' cy='32' r='8' fill='none' stroke='%2322987c' stroke-width='2' opacity='.55'/><path d='M32 32L32 6A26 26 0 0 1 54 44z' fill='%2338a58c' opacity='.28'/><circle cx='32' cy='32' r='3.5' fill='%2317705c'/><circle cx='44' cy='22' r='4' fill='%23f2a03d'/></svg>")}
  #toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,14px);
   background:#22404c;color:#fff;padding:13px 20px;border-radius:13px;font-size:14px;
   font-weight:600;max-width:88vw;text-align:center;opacity:0;transition:.25s;
@@ -381,6 +501,8 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
         <span class="art place"></span><span class="cap">Add a place</span></button>
       <button class="orb" onclick="show('events')">
         <span class="art events"></span><span class="cap">Events</span></button>
+      <button class="orb" onclick="show('radar')">
+        <span class="art radar"></span><span class="cap">Radar</span></button>
     </div>
     <button class="back" onclick="signOut()">Sign out</button>
   </div>
@@ -423,6 +545,19 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
     <div id="list"><div class="empty">Nothing yet.</div></div>
   </div>
 
+  <div class="card" id="v-radar" style="display:none">
+    <h2>Radar</h2>
+    <p class="sub">A sweep around where you are standing in the game. It picks up
+      everything wild within 500 m &mdash; shinies included. One sweep a minute.</p>
+    <div id="rmap"></div>
+    <div class="rhead">
+      <div class="n" id="r-when">Tap sweep to look around you.</div>
+    </div>
+    <button class="go" id="scan" onclick="scan()">SWEEP</button>
+    <div id="r-list"></div>
+    <button class="back" onclick="show('menu')">Back</button>
+  </div>
+
   <div class="card" id="v-events" style="display:none">
     <h2>Events</h2>
     <p class="sub">What's out in the wild right now, and what's coming up.</p>
@@ -448,7 +583,7 @@ function toast(m, bad){
 }
 let TOKEN = '', ME = '';
 function show(view){
-  ['login','menu','place','mine','events'].forEach(function(v){
+  ['login','menu','place','mine','events','radar'].forEach(function(v){
     const el = $('v-' + v);
     if (el) el.style.display = (v === view || (v === 'mine' && view === 'place'))
                                ? '' : 'none';
@@ -456,6 +591,7 @@ function show(view){
   if (view === 'place' && !mapReady) startMap();
   if (view === 'place') refresh();
   if (view === 'events') loadEvents();
+  if (view === 'radar' && !radarReady) startRadar();   // async: fills itself in
 }
 async function signIn(){
   const who = $('who').value.trim();
@@ -469,7 +605,12 @@ async function signIn(){
   $('hello').textContent = ME;
   show('menu');
 }
-function signOut(){ TOKEN = ''; ME = ''; show('login'); }
+function signOut(){
+  TOKEN = ''; ME = '';
+  clearInterval(rTimer); rTimer = null; rLeft = 0;   // the next trainer gets their own sweep
+  $('scan').disabled = false; $('scan').textContent = 'SWEEP';
+  show('login');
+}
 async function api(path, body){
   const payload = Object.assign({}, body || {});
   if (TOKEN) payload.token = TOKEN;
@@ -589,7 +730,9 @@ function evRow(tag, tagCls, name, lines){
   return '<div class="ev"><div class="tag ' + tagCls + '">' + esc(tag) + '</div>'
     + '<div class="b"><b>' + esc(name) + '</b>'
     + lines.filter(Boolean).map(function(l){ return '<small>' + esc(l) + '</small>'; }).join('')
-    + '</div></div>';
+    + '</div>'
+    + '<button class="rbtn" onclick="show(\'radar\')" title="Sweep for it on the radar">'
+    + '<span class="art"></span>Radar</button></div>';
 }
 async function loadEvents(){
   const r = await api('/hc/events', {});
@@ -606,6 +749,146 @@ async function loadEvents(){
   } else {
     box.innerHTML = '<div class="empty">Nothing scheduled. Check back later!</div>';
   }
+}
+// ---------------------------------------------------------------- radar
+// The sweep is spent server-side, so the countdown here is only about keeping the
+// button honest -- reloading the page does not hand you another one.
+let rmap = null, rlayer = null, radarReady = false, rLeft = 0, rTimer = null;
+let rFit = true;                     // frame the sweep once, then leave the view alone
+async function startRadar(){
+  radarReady = true;
+  if (typeof L === 'undefined'){        // no tiles out here; the list still works
+    $('rmap').style.display = 'none'; return;
+  }
+  rmap = L.map('rmap', {zoomControl:true}).setView([0, 0], 17);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              {maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(rmap);
+  rlayer = L.layerGroup().addTo(rmap);
+  // Open ON the trainer rather than in the middle of the ocean: the first sweep
+  // may be a minute away, and a map of nowhere tells you nothing meanwhile.
+  const r = await api('/hc/spot', {});
+  if (r && r.ok){
+    rmap.setView([r.lat, r.lng], 16);
+    L.circle([r.lat, r.lng], {radius: r.range_m, color:'#38a58c', weight:1,
+                              fillColor:'#38a58c', fillOpacity:.06}).addTo(rlayer);
+    L.circleMarker([r.lat, r.lng], {radius:7, color:'#fff', weight:3,
+                                    fillColor:'#2f6fd0', fillOpacity:1})
+      .addTo(rlayer).bindTooltip('You', {permanent:true, direction:'top',
+                                         className:'rtip', offset:[0,-6]});
+    $('r-when').textContent = 'Standing by. Tap sweep to look around you.';
+  } else {
+    $('r-when').textContent = 'Open the game so the radar can find you.';
+  }
+  setTimeout(function(){ rmap.invalidateSize(); }, 200);
+}
+function mmss(ms){
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
+}
+function rCooldown(ms){
+  clearInterval(rTimer); rLeft = ms || 0;
+  const tick = function(){
+    if (rLeft <= 0){
+      clearInterval(rTimer); rTimer = null;
+      $('scan').disabled = false; $('scan').textContent = 'SWEEP';
+      return;
+    }
+    $('scan').disabled = true;
+    $('scan').textContent = 'RECHARGING ' + mmss(rLeft);
+    rLeft -= 1000;
+  };
+  tick();
+  if (rLeft > 0) rTimer = setInterval(tick, 1000);
+}
+function goneIn(ms){
+  const left = ms - Date.now();
+  if (!ms || left <= 0) return 'about to go';
+  return left < 60000 ? 'gone in under a minute'
+                      : 'gone in ' + Math.round(left / 60000) + ' min';
+}
+let ART = {};              // {dex:[w,h]} for species with a sprite; rest keep the dot
+// Scale by AREA so every sprite carries the same visual weight whatever its
+// shape -- the art is cropped tight, and one fixed box turns a wide Pokemon into
+// a sliver next to a tall one.
+function monBox(wh){
+  const TARGET = 40, CAP = 58;
+  const s = TARGET / Math.sqrt(wh[0] * wh[1]);
+  let w = wh[0] * s, h = wh[1] * s;
+  const k = Math.min(1, CAP / Math.max(w, h));
+  return [Math.round(w * k), Math.round(h * k)];
+}
+function drawRadar(r){
+  ART = r.art || {};
+  if (rmap){
+    rlayer.clearLayers();
+    const ring = L.circle([r.lat, r.lng], {radius: r.range_m, color:'#38a58c',
+                            weight:1, fillColor:'#38a58c', fillOpacity:.06}).addTo(rlayer);
+    // Frame the whole sweep on the FIRST look only: after that, whatever you
+    // panned or zoomed to is yours to keep, and the next sweep leaves it alone.
+    if (rFit){ rFit = false; rmap.fitBounds(ring.getBounds(), {padding:[12, 12]}); }
+    L.circleMarker([r.lat, r.lng], {radius:7, color:'#fff', weight:3,
+                                    fillColor:'#2f6fd0', fillOpacity:1})
+      .addTo(rlayer).bindTooltip('You', {permanent:true, direction:'top',
+                                         className:'rtip', offset:[0,-6]});
+    r.rows.forEach(function(p){
+      // A species with art gets the sprite; anything else keeps the plain dot.
+      const wh = ART[p.pokemon_id], box = wh && monBox(wh);
+      const m = box
+        ? L.marker([p.lat, p.lng], {zIndexOffset: p.shiny ? 1000 : 0,
+            icon: L.divIcon({className:'',
+              html:'<div class="rmon' + (p.shiny ? ' sh' : '') + '">'
+                 + '<span class="disc"></span>'
+                 + '<img src="/hc/mon/' + p.pokemon_id + '.png" alt="" width="'
+                 + box[0] + '" height="' + box[1] + '">'
+                 + (p.shiny ? '<span class="star">★</span>' : '') + '</div>',
+              iconSize:[68,64], iconAnchor:[34,62]})})
+        : L.circleMarker([p.lat, p.lng], {
+            radius: p.shiny ? 9 : 6, weight: p.shiny ? 3 : 2, color:'#fff',
+            fillColor: p.shiny ? '#f2a03d' : '#6f8f9e', fillOpacity:1});
+      m.addTo(rlayer)
+       .bindTooltip((p.shiny ? '★ ' : '') + p.name,
+                    {permanent: !!p.shiny, direction:'top',
+                     className: 'rtip' + (p.shiny ? ' sh' : ''),
+                     offset:[0, box ? -62 : -6]});
+    });
+    setTimeout(function(){ rmap.invalidateSize(); }, 100);
+  }
+  const shinies = r.rows.filter(function(p){ return p.shiny; }).length;
+  const more = r.left > 0
+    ? ' &middot; still looking at the edges &mdash; sweep again'
+    : '';
+  $('r-when').innerHTML = r.rows.length
+    ? '<b>' + r.rows.length + '</b> nearby'
+      + (shinies ? ' &middot; <b>' + shinies + ' shiny</b>' : '')
+      + ' &middot; swept ' + fmtClock(Date.now() / 1000) + more
+    : 'Nothing within 500 m right now.' + more;
+  const box = $('r-list');
+  box.innerHTML = '';
+  r.rows.forEach(function(p){
+    const d = document.createElement('div');
+    d.className = 'find' + (p.shiny ? ' sh' : '');
+    d.innerHTML = '<div class="dot">'
+      + (ART[p.pokemon_id]
+          ? '<img src="/hc/mon/' + p.pokemon_id + '.png" alt="">'
+          : (p.shiny ? '★' : esc(p.name[0]))) + '</div>'
+      + '<div class="t"><b>' + esc(p.name) + (p.shiny ? ' — shiny!' : '') + '</b>'
+      + '<small>' + goneIn(p.expires_ms) + '</small></div>'
+      + '<div class="d">' + p.distance_m + ' m</div>';
+    box.appendChild(d);
+  });
+}
+async function scan(){
+  if (rLeft > 0) return;
+  $('scan').disabled = true;
+  const r = await api('/hc/radar', {});
+  if (!r.ok){
+    toast(r.message, true);
+    rCooldown(r.wait_ms || 0);
+    return;
+  }
+  drawRadar(r);
+  if (r.rows.some(function(p){ return p.shiny; })) toast('Shiny on the radar!');
+  rCooldown(r.wait_ms || 60000);
 }
 $('who').addEventListener('change', refresh);
 (async function(){
@@ -637,6 +920,12 @@ def handle(method, path, query, headers, body, log):
         d = json.loads(body.decode("utf-8")) if body else {}
     except ValueError:
         d = {}
+
+    if path.startswith("/hc/mon/"):
+        # Sprite for one species, by dex number: /hc/mon/25.png. Public on purpose
+        # -- it is art, and the radar page asks for it before anything is signed in.
+        import monart
+        return monart.serve(os.path.splitext(os.path.basename(path))[0])
 
     if path == "/hc/where":
         import rpc
@@ -691,6 +980,30 @@ def handle(method, path, query, headers, body, log):
             + (f" (photo {row['photo']})" if row["photo"] else " (no photo)"))
         return _json({"ok": True, "wait_ms": cooldown_left(who),
                       "message": "Added. Look for it on the map."})
+
+    if path == "/hc/radar":
+        wait = radar_cooldown_left(me)
+        if wait > 0:
+            return _json({"ok": False, "wait_ms": wait,
+                          "message": "The radar is still recharging."})
+        scan = _radar_scan(me)
+        if scan is None:
+            return _json({"ok": False, "wait_ms": 0,
+                          "message": "Open the game first so the radar can find you."})
+        shinies = sum(1 for r in scan["rows"] if r["shiny"])
+        log(f"[help] {me} scanned: {len(scan['rows'])} nearby"
+            + (f", {shinies} shiny" if shinies else ""))
+        scan["ok"] = True
+        scan["wait_ms"] = radar_cooldown_left(me)
+        return _json(scan)
+
+    if path == "/hc/spot":
+        # Where THIS trainer is, for centring the radar map before any sweep.
+        import world
+        loc = world.player_location(me)
+        return _json({"ok": bool(loc),
+                      "lat": loc[0] if loc else 0.0, "lng": loc[1] if loc else 0.0,
+                      "range_m": radar_range_m()})
 
     if path == "/hc/mine":
         who = me

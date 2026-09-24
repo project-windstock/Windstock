@@ -128,6 +128,14 @@ def level_for_xp(xp):
     return min(len(table), lvl)
 
 
+def xp_for_level(level):
+    """The XP floor of a level -- the inverse of level_for_xp, so setting a
+    trainer's XP to this puts them exactly at the start of that level."""
+    table = _build_level_xp()
+    idx = max(1, min(len(table), int(level))) - 1
+    return table[idx]
+
+
 def level_bounds(xp):
     table = _build_level_xp()
     lvl = level_for_xp(xp)
@@ -180,6 +188,11 @@ class Player:
         # when the trainer is created and saved, so it never moves again.
         self.CREATED_MS = int(time.time() * 1000)
         self.LAST_POS = None     # (lat, lng) for the walked-distance tally
+        # Where this trainer last was, as [lat, lng, ms] -- SAVED, unlike
+        # PLAYER_LOC, which is in memory and empty until they open the game
+        # again after a restart. The desktop radar (radarsite.py) sweeps from
+        # here, so it still works while the phone is in a pocket.
+        self.LAST_SEEN = None
         self.TEAM = 0            # 0 = not chosen yet; set in game at level 5
         # Onboarding: which TutorialCompletion steps this trainer has finished.
         # DEFAULT COMPLETE so every account skips onboarding unless it is a brand
@@ -207,6 +220,7 @@ class Player:
         self.BERRIES = {}        # encounter_id -> capture multiplier in effect
         self.PW = ""             # "salt$hash"; empty until the account is claimed
         self.APPLIED = []        # active Lucky Egg / Incense: {item, applied_ms, expires_ms}
+        self.SHINY_CHARM = False # bought once in the shop; boosts the shiny rate forever
         # Everything the Medals screen is scored on. The client draws each medal
         # from the badge list we return in GET_PLAYER_PROFILE, and that list is
         # computed from these counters against the game master's rank targets --
@@ -242,8 +256,10 @@ class Player:
                 "deleted": {str(k): v for k, v in self.DELETED.items()},
                 "pokedex": {str(k): list(v) for k, v in self.POKEDEX.items()},
                 "team": self.TEAM, "pw": self.PW, "applied": self.APPLIED,
+                "shiny_charm": self.SHINY_CHARM,
                 "tutorial": list(self.TUTORIAL), "codename": self.CODENAME,
                 "free_stop_used": self.FREE_STOP_USED,
+                "last_seen": list(self.LAST_SEEN) if self.LAST_SEEN else None,
                 "last_defender_bonus": self.LAST_DEFENDER_BONUS,
                 "streak": self.STREAK,
                 "eggs": self.EGGS, "incubators": self.INCUBATORS,
@@ -316,6 +332,13 @@ class Player:
         self.TEAM = int(d.get("team", 0) or 0)
         # Old saves (written before onboarding existed) have no "tutorial" key --
         # treat them as fully done so a current player is never sent through it.
+        _seen = d.get("last_seen")
+        if isinstance(_seen, (list, tuple)) and len(_seen) >= 2:
+            try:
+                self.LAST_SEEN = [float(_seen[0]), float(_seen[1]),
+                                  int(_seen[2]) if len(_seen) > 2 else 0]
+            except (TypeError, ValueError):
+                self.LAST_SEEN = None
         self.TUTORIAL = sorted({int(x) for x in d.get("tutorial", _TUTORIAL_COMPLETE)
                                 if str(x).lstrip("-").isdigit()})
         self.CODENAME = str(d.get("codename", "") or "")
@@ -323,6 +346,7 @@ class Player:
         self.LAST_DEFENDER_BONUS = int(d.get("last_defender_bonus", 0) or 0)
         self.PW = str(d.get("pw", "") or "")
         self.APPLIED = [a for a in (d.get("applied") or []) if isinstance(a, dict)]
+        self.SHINY_CHARM = bool(d.get("shiny_charm", False))
         self.EGGS = [e for e in (d.get("eggs") or []) if isinstance(e, dict)]
         inc = [i for i in (d.get("incubators") or []) if isinstance(i, dict)]
         if inc:
@@ -445,6 +469,17 @@ def use(username):
     name = username or "player"
     with _lock:
         p = _players.get(name)
+        if p is None:
+            # Saves are stored under a lowercased file name, so "Bracky68" and
+            # "bracky68" are the SAME account. Without this they got two Player
+            # objects over one file, and whichever saved last wiped the other's
+            # progress -- exactly what happens when the World Manager gives an
+            # item to a trainer who is playing right now.
+            key = _safe_name(name)
+            for existing, obj in _players.items():
+                if _safe_name(existing) == key:
+                    p = obj
+                    break
         if p is not None and not os.path.exists(p.file):
             # The save was deleted while the server was running (a reset for
             # testing). Every save goes through os.replace, so the file never
@@ -518,7 +553,7 @@ def accounts():
 # module-level names (world.BAG, world.CANDY, ...) forward to the current player
 _FORWARD = {"BAG", "CAUGHT", "CANDY", "STARDUST", "XP", "LEVEL", "COINS", "DELETED", "POKEDEX",
             "EGGS", "INCUBATORS", "HATCHED", "TEAM", "BERRIES", "APPLIED",
-            "MAX_POKEMON", "MAX_ITEMS", "CLAIMED_LEVELS", "STATS",
+            "MAX_POKEMON", "MAX_ITEMS", "CLAIMED_LEVELS", "STATS", "SHINY_CHARM",
             "CAUGHT_BY_TYPE", "BADGES", "AVATAR", "AVATAR_ASK"}
 
 
@@ -583,7 +618,8 @@ def save_gyms():
     try:
         tmp = GYMS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump({"gyms": GYMS, "prestige": PRESTIGE}, fh, indent=1)
+            json.dump({"gyms": GYMS, "prestige": PRESTIGE,
+                       "npc_cleared": NPC_CLEARED}, fh, indent=1)
         os.replace(tmp, GYMS_FILE)
     except OSError:
         pass
@@ -608,6 +644,9 @@ def load_gyms():
         PRESTIGE.clear()
         PRESTIGE.update({k: int(v) for k, v in (d.get("prestige") or {}).items()
                          if isinstance(v, (int, float))})
+        NPC_CLEARED.clear()
+        NPC_CLEARED.update({k: int(v) for k, v in (d.get("npc_cleared") or {}).items()
+                            if isinstance(v, (int, float))})
         _backfill_prestige()
         return True
     except (OSError, ValueError):
@@ -671,6 +710,65 @@ def is_despawned(encounter_id):
             p.DESPAWNED.pop(encounter_id, None)
             return False
         return True
+
+
+def live_spawns(limit=2000):
+    """The whole wild spawn table, minus anything already expired.
+
+    No trainer, no range, no per-trainer filtering -- the World Manager radar
+    wants to see what EXISTS. The player-facing radar uses spawns_near instead,
+    which is scoped to one trainer and hides what they already took.
+    """
+    now = int(time.time() * 1000)
+    with _lock:
+        items = list(SPAWNS.items())
+    out = []
+    for eid, s in items:
+        exp = int(s.get("expires_ms") or 0)
+        if exp and exp < now:
+            continue
+        row = dict(s)
+        row["eid"] = eid
+        out.append(row)
+    out.sort(key=lambda r: r.get("expires_ms") or 0)     # soonest to vanish first
+    return out[:limit]
+
+
+def spawns_near(lat, lng, metres=500.0, limit=60):
+    """Live wild spawns within `metres` of a point, nearest first.
+
+    For the Help Center radar. Anything already expired is skipped, and so is
+    anything the CURRENT trainer has caught or let flee, so the radar lists what
+    that trainer's phone would actually still see on the map.
+
+    Each row is a copy -- the caller never gets a handle on the shared spawn.
+    """
+    if not (abs(lat) > 1e-6 or abs(lng) > 1e-6):
+        return []
+    now = int(time.time() * 1000)
+    deg = metres / 111_000.0
+    shrink = max(0.05, math.cos(math.radians(lat)))   # a degree of longitude is shorter up north
+    out = []
+    with _lock:
+        items = list(SPAWNS.items())
+    for eid, s in items:
+        exp = int(s.get("expires_ms") or 0)
+        if exp and exp < now:
+            continue
+        dlat, dlng = s["lat"] - lat, (s["lng"] - lng) * shrink
+        if abs(dlat) > deg or abs(dlng) > deg:        # cheap box test before the hypot
+            continue
+        d = math.hypot(dlat, dlng) * 111_000.0
+        if d > metres:
+            continue
+        if is_despawned(eid):
+            continue
+        row = dict(s)
+        row["eid"] = eid
+        row["distance_m"] = d
+        out.append(row)
+    out.sort(key=lambda r: r["distance_m"])
+    return out[:limit]
 
 
 # --- bag ---------------------------------------------------------------------
@@ -1008,15 +1106,76 @@ def has_password(username):
 
 
 def account_names():
-    """Every account we know of: loaded ones plus saved files."""
-    names = set(_players)
+    """Every account we know of, once each, spelled the way it is played.
+
+    Loaded players are keyed by the name the client sends ("Bracky68"); saves
+    are files named by _safe_name(), which lowercases ("bracky68"). Both used to
+    come back, so the World Manager's account list showed every trainer twice
+    and its error messages listed both spellings.
+    """
+    best = {}                      # _safe_name -> the nicest spelling we have
+    with _lock:
+        for name in _players:
+            best[_safe_name(name)] = name
     try:
         for fn in os.listdir(SAVES_DIR):
             if fn.endswith(".json") and not fn.startswith("_"):
-                names.add(fn[:-len(".json")])
+                stem = fn[:-len(".json")]
+                if stem in best:
+                    continue       # a loaded player already covers this save
+                # The save knows its own capitalisation; the file name lost it.
+                shown = stem
+                try:
+                    with open(os.path.join(SAVES_DIR, fn), encoding="utf-8") as fh:
+                        shown = str(json.load(fh).get("username") or stem)
+                except (OSError, ValueError, TypeError):
+                    pass
+                best[stem] = shown
     except OSError:
         pass
-    return sorted(names)
+    return sorted(best.values())
+
+
+def resolve_account(username):
+    """The account a typed name refers to, as the rest of the server spells it,
+    or None if there is no such save.
+
+    Case-insensitive on purpose: account_names() is built from save FILE names,
+    which _safe_name() lowercases, so a trainer called "Bracky68" is stored as
+    "bracky68". Comparing exactly is why the World Manager used to answer "no
+    account called 'Bracky68'" for the very trainer you were playing as.
+    """
+    name = (username or "").strip()
+    if not name:
+        return None
+    known = account_names()
+    if name in known:
+        return name
+    lowered = name.lower()
+    # Prefer a loaded player, whose key is spelled the way the game uses it.
+    with _lock:
+        for loaded in _players:
+            if loaded.lower() == lowered:
+                return loaded
+    for other in known:
+        if other.lower() == lowered:
+            return other
+    return None
+
+
+def last_active_account():
+    """The trainer most recently saved -- what "me" means in the World Manager
+    when no name is typed. On a phone there is usually exactly one."""
+    best, best_mtime = None, -1.0
+    for name in account_names():
+        try:
+            mtime = os.path.getmtime(
+                os.path.join(SAVES_DIR, _safe_name(name) + ".json"))
+        except OSError:
+            continue
+        if mtime > best_mtime:
+            best, best_mtime = name, mtime
+    return resolve_account(best) if best else None
 
 
 @contextlib.contextmanager
@@ -1028,9 +1187,9 @@ def acting_as(username):
     afterwards either way. Raises KeyError if the account has never been seen --
     we do NOT want a typo silently creating a new save.
     """
-    name = (username or "").strip()
-    if not name or name not in account_names():
-        raise KeyError(name)
+    name = resolve_account(username)
+    if name is None:
+        raise KeyError((username or "").strip())
     prev = getattr(_current, "player", None)
     try:
         yield use(name)
@@ -1233,6 +1392,57 @@ def item_active(item_id):
 def xp_multiplier():
     """A Lucky Egg doubles everything you earn while it burns."""
     return 2 if item_active(301) else 1
+
+
+# Shiny Incense rides the same APPLIED list as the Lucky Egg / Incense, under an
+# id the 2016 client knows nothing about. It is deliberately NOT a bag item: the
+# client draws the bag from its own bundled item art, so a made-up item id would
+# sit there as a blank tile. Bought from the shop, it goes straight to APPLIED.
+SHINY_INCENSE_ITEM = 9401
+
+
+def has_shiny_charm():
+    return bool(current().SHINY_CHARM)
+
+
+def grant_shiny_charm():
+    """(ok, message). The charm is permanent, so buying a second one is refused
+    rather than silently taking the coins."""
+    p = current()
+    with _lock:
+        if p.SHINY_CHARM:
+            return False, "You already have the Shiny Charm."
+        p.SHINY_CHARM = True
+    p.save()
+    return True, "The Shiny Charm is yours. It works automatically, forever."
+
+
+def start_shiny_incense(minutes):
+    """(ok, message). Like apply_item(), but nothing is taken from the bag --
+    the shop grants the burn directly."""
+    p = current()
+    now = int(time.time() * 1000)
+    with _lock:
+        p.APPLIED = [a for a in p.APPLIED if a.get("expires_ms", 0) > now]
+        if any(a["item"] == SHINY_INCENSE_ITEM for a in p.APPLIED):
+            return False, "A Shiny Incense is already burning."
+        p.APPLIED.append({"item": SHINY_INCENSE_ITEM, "applied_ms": now,
+                          "expires_ms": now + int(float(minutes) * 60000)})
+    p.save()
+    return True, f"Shiny Incense lit for {int(float(minutes))} minutes."
+
+
+def client_applied_items():
+    """applied_items() minus our own private boosts. The 2016 client draws an
+    active-buff icon from its bundled art, so an id it has never heard of must
+    never reach it -- SHINY_INCENSE_ITEM is server-side only."""
+    return [a for a in applied_items() if int(a.get("item", 0)) < 9000]
+
+
+def shiny_incense_ms_left():
+    now = int(time.time() * 1000)
+    return max(0, max([a["expires_ms"] for a in applied_items()
+                       if a["item"] == SHINY_INCENSE_ITEM] or [0]) - now)
 
 
 def save_lures():
@@ -1525,13 +1735,82 @@ def is_raid_uid(fort_id, uid):
     return RAID["on"] and _raid_member(fort_id)["uid"] == uid
 
 
+# Gyms nobody holds used to be EMPTY, and an empty gym cannot be fought:
+# START_GYM_BATTLE answers GYM_EMPTY and the client only offers "deploy". So
+# every gym on a fresh server was decoration. These are rival defenders for
+# unclaimed gyms -- worked out from the fort id, so a gym looks the same every
+# time you pass it, and nothing is written to disk until you actually fight.
+NPC_CLEARED = {}                      # fort_id -> ms it was beaten
+_NPC_TRAINER = "Rival"
+
+
+def _npc_count():
+    return max(0, _cfg.get("gyms", "npc_defenders", cast=int))
+
+
+def _npc_members(fort_id):
+    """Who is guarding an unclaimed gym, or [] when the feature is off or the
+    gym was beaten recently."""
+    n = _npc_count()
+    if not n:
+        return []
+    mins = max(0, _cfg.get("gyms", "npc_respawn_minutes", cast=int))
+    beaten = int(NPC_CLEARED.get(fort_id, 0))
+    if beaten and (time.time() * 1000 - beaten) < mins * 60_000:
+        return []
+    lo = max(10, _cfg.get("gyms", "npc_min_cp", cast=int))
+    hi = max(lo, _cfg.get("gyms", "npc_max_cp", cast=int))
+    rnd = _random.Random(f"npc:{fort_id}")
+    # A team that is not the player's, so the client offers a fight rather
+    # than a deploy slot.
+    mine = my_team() or 1
+    team = rnd.choice([t for t in (1, 2, 3) if t != mine])
+    out = []
+    for i in range(n):
+        pid = rnd.randint(1, 151)
+        while pid in _NPC_SKIP:
+            pid = rnd.randint(1, 151)
+        out.append({"uid": (abs(hash(("npc", fort_id, i))) & 0x3FFFFFFFFFFFFFFF) | 1,
+                    "pokemon_id": pid, "cp": rnd.randint(lo, hi),
+                    "trainer": _NPC_TRAINER, "team": team, "npc": True,
+                    "deployed_ms": int(time.time() * 1000)})
+    out.sort(key=lambda m: -m["cp"])
+    return out
+
+
+_NPC_SKIP = {144, 145, 146, 150, 151}      # no legendaries guarding a street gym
+
+
+def ensure_npc_defenders(fort_id):
+    """Make the rivals real, just before a battle.
+
+    Kept virtual until here on purpose: gym_guard() runs for every gym in every
+    map response, and writing one of these per gym seen would fill gyms.json
+    with thousands of entries. Once they are in GYMS the existing battle,
+    prestige and eject logic treats them like any other defender.
+    """
+    with _lock:
+        if GYMS.get(fort_id):
+            return False
+        members = _npc_members(fort_id)
+        if not members:
+            return False
+        GYMS[fort_id] = members
+        PRESTIGE.setdefault(fort_id, 500 * len(members))
+    save_gyms()
+    return True
+
+
 def gym_members(fort_id):
     with _lock:
         if RAID["on"]:
             # The boss REPLACES whatever was defending. Real defenders were sent
             # home when raid mode was switched on, so nothing is lost.
             return [_raid_member(fort_id)]
-        return list(GYMS.get(fort_id, []))
+        real = GYMS.get(fort_id)
+        if real:
+            return list(real)
+    return _npc_members(fort_id)      # outside the lock: reads settings
 
 
 def load_raid():
@@ -1634,13 +1913,48 @@ def set_player_location(lat, lng, username=None):
     single last-location was whoever happened to send the latest request)."""
     if not (abs(lat) > 1e-6 or abs(lng) > 1e-6):
         return
+    who = username or current().username
     with _lock:
-        PLAYER_LOC[username or current().username] = (float(lat), float(lng))
+        PLAYER_LOC[who] = (float(lat), float(lng))
+
+    # Also keep it in the save, so it survives a restart. This is called on
+    # EVERY rpc -- several times a minute -- so it only writes when the trainer
+    # has actually moved or the stored fix has gone stale.
+    now = int(time.time() * 1000)
+    try:
+        p = current()
+        if p.username != who:
+            return
+        old = p.LAST_SEEN
+        if old:
+            moved = math.hypot((lat - old[0]) * 111_320.0,
+                               (lng - old[1]) * 111_320.0
+                               * max(0.05, math.cos(math.radians(lat))))
+            if moved < 25.0 and now - int(old[2] or 0) < 120_000:
+                return
+        p.LAST_SEEN = [float(lat), float(lng), now]
+        p.save()
+    except Exception:
+        pass
 
 
 def player_location(username):
+    """Where this trainer is. The live position when they have played since the
+    server started, otherwise the one saved from last time -- which is what
+    lets the desktop radar work with the game closed."""
     with _lock:
-        return PLAYER_LOC.get(username)
+        live = PLAYER_LOC.get(username)
+    if live:
+        return live
+    # Read the save directly rather than use(): use() switches the ACTIVE
+    # trainer, and this is called from request handlers serving someone else.
+    try:
+        path = os.path.join(SAVES_DIR, _safe_name(username) + ".json")
+        with open(path, encoding="utf-8") as fh:
+            saved = json.load(fh).get("last_seen")
+        return (float(saved[0]), float(saved[1])) if saved else None
+    except (OSError, ValueError, TypeError, IndexError):
+        return None
 
 
 def _day_key(offset=0):
@@ -1731,7 +2045,15 @@ def _level_for(prestige):
 
 def gym_prestige(fort_id):
     with _lock:
-        return int(PRESTIGE.get(fort_id, 0))
+        if fort_id in PRESTIGE:
+            return int(PRESTIGE[fort_id])
+        held = bool(GYMS.get(fort_id))
+    if held:
+        return 0
+    # A gym still held by virtual rivals has no PRESTIGE entry yet, and the
+    # client reads the gym's LEVEL off this -- reporting 0 drew a level-less
+    # gym. Same value ensure_npc_defenders() will write when you fight it.
+    return 500 * len(_npc_members(fort_id))
 
 
 def gym_level(fort_id):
@@ -1763,6 +2085,10 @@ def add_prestige(fort_id, delta):
             GYMS.pop(fort_id, None)
             PRESTIGE.pop(fort_id, None)
             level, new = 1, 0
+            # Rivals stay beaten for a while; otherwise the gym you just took
+            # would have a fresh set guarding it on the next map refresh.
+            if any(m.get("npc") for m in ejected):
+                NPC_CLEARED[fort_id] = int(time.time() * 1000)
         else:
             PRESTIGE[fort_id] = new
             level = _level_for(new)

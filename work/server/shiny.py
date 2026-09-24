@@ -14,9 +14,14 @@ never from a random draw at encounter time. Backing out and tapping again, letti
 flee and finding it again, restarting the server -- the answer is always the same, so
 there's no rerolling.
 
+Shiny Charm / Shiny Incense (ported from Kanto's shop) multiply the rate: the charm
+permanently, the incense while it burns. Both are bought in the shop, and neither is a
+bag item -- see world.SHINY_INCENSE_ITEM for why.
+
 Tweak API (game host, trainer recognised by phone IP like the raid/weather screens):
   GET /shiny/state -> {"species": [25], "encounter": {"eid","pokemon_id","shiny"} | null,
-                       "shiny_uids": ["123", ...]}
+                       "shiny_uids": ["123", ...], "charm": bool, "incense_ms": int,
+                       "rate": float}
 """
 import json
 import re
@@ -29,6 +34,19 @@ import settings as _cfg
 _lock = threading.Lock()
 _ENCOUNTER = {}          # username -> {"eid", "pokemon_id", "shiny", "t"}
 ENCOUNTER_TTL_S = 180    # an encounter nobody finished stops counting after this
+
+# encounter_id -> (rate, when). The Shiny Charm and Shiny Incense change the rate,
+# and without this a spawn met while an incense burned would quietly stop being
+# shiny once it ran out -- exactly the rerolling this module promises never
+# happens. Judged once, remembered.
+#
+# Evicted by AGE, not by count: a spawn only lives minutes, so an hour is far
+# longer than any judgement has to survive, and an eviction that dropped a LIVE
+# spawn would reroll it. (An early version capped the count instead, and a busy
+# hour silently rerolled the oldest spawns still on the map.)
+_JUDGED = {}
+_JUDGED_TTL_S = 3600
+_MAX_JUDGED = 65536
 
 
 def species_with_models():
@@ -49,6 +67,25 @@ def species_with_models():
     return out
 
 
+def effective_rate():
+    """The shiny rate for the CURRENT world account, right now.
+
+    base x Shiny Charm (permanent, bought once) x Shiny Incense (while it burns).
+    Ported from Kanto, which sells the same pair; the numbers are ours and live
+    in settings.
+    """
+    rate = max(0.0, min(1.0, _cfg.get("shiny", "rate", cast=float)))
+    try:
+        import world
+        if world.has_shiny_charm():
+            rate *= max(1.0, _cfg.get("shiny", "charm_multiplier", cast=float))
+        if world.shiny_incense_ms_left() > 0:
+            rate *= max(1.0, _cfg.get("shiny", "incense_multiplier", cast=float))
+    except Exception:
+        pass
+    return max(0.0, min(1.0, rate))
+
+
 def is_shiny(encounter_id, pokemon_id):
     """Fixed per spawn: the same encounter id always gives the same answer."""
     if not _cfg.get("shiny", "enabled", cast=bool):
@@ -60,7 +97,16 @@ def is_shiny(encounter_id, pokemon_id):
         return False
     if pid not in species_with_models():
         return False
-    rate = max(0.0, min(1.0, _cfg.get("shiny", "rate", cast=float)))
+    now = time.time()
+    with _lock:
+        hit = _JUDGED.get(eid)
+        if hit is None:
+            if len(_JUDGED) >= _MAX_JUDGED:
+                stale = [k for k, (_r, t) in _JUDGED.items() if now - t > _JUDGED_TTL_S]
+                for k in stale or sorted(_JUDGED, key=lambda k: _JUDGED[k][1])[:_MAX_JUDGED // 4]:
+                    _JUDGED.pop(k, None)
+            hit = _JUDGED[eid] = (effective_rate(), now)
+        rate = hit[0]
     roll = zlib.crc32(f"shiny:{eid}".encode()) / 0xFFFFFFFF
     return roll < rate
 
@@ -98,5 +144,8 @@ def handle(method, path, query, headers, body, log, ip=None):
             out["encounter"] = {k: enc[k] for k in ("eid", "pokemon_id", "shiny")}
         world.use(user)
         out["shiny_uids"] = [str(c["uid"]) for c in world.caught() if c.get("shiny")]
+        out["charm"] = world.has_shiny_charm()
+        out["incense_ms"] = world.shiny_incense_ms_left()
+        out["rate"] = effective_rate()
     return 200, {"Content-Type": "application/json", "Cache-Control": "no-store"}, \
         json.dumps(out).encode("utf-8")

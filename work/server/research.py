@@ -39,7 +39,7 @@ POKEMON_ICON_URL = ("https://raw.githubusercontent.com/PokeMiners/pogo_assets/ma
                     "Images/Pokemon/pokemon_icon_{:03d}_00.png")
 
 _lock = threading.RLock()
-_notify = {}             # user -> {"seq", "count"}: the "N Research Tasks Updated" toast
+_notify = {}             # user -> {"seq", "tasks", "t"}: what the toast should say
 
 # ------------------------------------------------------------------ vocabulary
 TYPES = ["", "Normal", "Fighting", "Flying", "Poison", "Ground", "Rock", "Bug", "Ghost",
@@ -315,6 +315,16 @@ def _km(user):
         return 0.0
 
 
+def _level(user):
+    """The trainer's level -- the phone hides Research and All Events below 5."""
+    try:
+        import world
+        world.use(user)
+        return int(world.stats()[0])
+    except Exception:
+        return 0
+
+
 def _roll_today(user, p, cfg):
     """A fresh set of field tasks each day (same set if asked twice the same day)."""
     today = _today()
@@ -415,11 +425,12 @@ def event(user, kind, n=1, **ctx):
         cfg = load_config()
         p = _load_progress(user)
         _roll_today(user, p, cfg)
-        changed = 0
+        changed = []            # (key, text, progress, need) for each task that moved
         for t in p["field"] + p["given"]:
             if not t["claimed"] and t["progress"] < _need(t["task"]) and _matches(t["task"], kind, ctx):
                 t["progress"] = min(_need(t["task"]), t["progress"] + n)
-                changed += 1
+                changed.append(("field:" + t["id"], task_text(t["task"]),
+                                t["progress"], _need(t["task"])))
         for _grp, s in _stories_for(cfg, user):
             st = _story_state(p, s, user)
             if st["done"]:
@@ -428,20 +439,28 @@ def event(user, kind, n=1, **ctx):
             for i, task in enumerate(tasks):
                 if st["progress"][i] < _need(task) and _matches(task, kind, ctx):
                     st["progress"][i] = min(_need(task), st["progress"][i] + n)
-                    changed += 1
+                    changed.append((f"story:{s['id']}:{i}", task_text(task),
+                                    st["progress"][i], _need(task)))
         if changed:
             _save_progress(user, p)
             _bump(user, changed)
 
 
-def _bump(user, count):
-    """Tell the phone how many tasks just moved (one catch can move several)."""
+def _bump(user, changed):
+    """Tell the phone which tasks just moved (one catch can move several).
+
+    Keyed by task so the same task moving twice in one action counts once: the
+    phone shows "N research tasks updated" for several, and the task itself with
+    its progress bar when only one moved.
+    """
     now = time.time()
     with _lock:
-        cur = _notify.get(user) or {"seq": 0, "count": 0, "t": 0}
+        cur = _notify.get(user) or {"seq": 0, "tasks": {}, "t": 0}
         # events from the same action (a catch + its throw) arrive together: merge them
-        merged = cur["count"] + count if now - cur["t"] < 1.0 else count
-        _notify[user] = {"seq": cur["seq"] + 1, "count": merged, "t": now}
+        tasks = dict(cur.get("tasks") or {}) if now - cur["t"] < 1.0 else {}
+        for key, text, progress, need in changed:
+            tasks[key] = {"text": text, "progress": progress, "count": need}
+        _notify[user] = {"seq": cur["seq"] + 1, "tasks": tasks, "t": now}
 
 
 def _apply_walk(user, p, cfg):
@@ -523,7 +542,7 @@ def state(user):
                      any(s["can_claim_step"] for g in tabs.values() for s in g))
         return {"today": {"tasks": today, "breakthrough": stamps},
                 "special": tabs["special"], "timed": tabs["timed"],
-                "claimable": claimable, "server_ms": now}
+                "claimable": claimable, "level": _level(user), "server_ms": now}
 
 
 # -------------------------------------------------------------------- claims
@@ -796,9 +815,57 @@ def events_view():
                      "ends_ms": int(s.get("ends_ms", 0) or 0),
                      "bonuses": ["Timed Research"],
                      "active": _timed_live(s, now_ms)})
+    # The event set by hand in the World Manager (events.json) has no schedule
+    # and no end -- it simply runs until someone changes it. It was missing from
+    # this screen entirely, so a server could be deep in a Legendary Hunt while
+    # the calendar said "nothing scheduled". ends_ms 0 means open-ended; the
+    # phone shows that as "Running now".
+    try:
+        import events as EV
+        live = EV.get()
+        if str(live.get("event_name", "")) not in ("", "Normal"):
+            rows.append({"title": live.get("event_name"), "kind": "event",
+                         "preset": "", "starts_ms": 0, "ends_ms": 0,
+                         "bonuses": _preset_bonuses(live), "active": True})
+    except Exception:
+        pass
     rows.sort(key=lambda r: (not r["active"], r["starts_ms"]))
     return {"server_ms": now_ms, "now": [r for r in rows if r["active"]],
             "soon": [r for r in rows if not r["active"]]}
+
+
+# ------------------------------------------------------------------ radar
+def radar_view(user, sweep, log=None):
+    """The Help Center's radar, for the phone's All Events screen. Same 500 m scan
+    and the same once-a-minute cooldown -- a sweep here counts there, and back."""
+    import helpcenter as HC
+    wait = HC.radar_cooldown_left(user)
+    base = {"range_m": HC.radar_range_m(), "wait_ms": wait,
+            "cooldown_ms": HC.radar_cooldown_ms()}
+    # Where the trainer is, so a map can centre itself BEFORE the first sweep
+    # (and while the cooldown is running). The list view never needed this.
+    try:
+        import world as _w
+        loc = _w.player_location(user)
+        if loc:
+            base["lat"], base["lng"] = loc[0], loc[1]
+    except Exception:
+        pass
+    if not sweep:
+        return dict(base, ok=True)
+    if wait > 0:
+        return dict(base, ok=False, message="The radar is still recharging.")
+    scan = HC._radar_scan(user)
+    if scan is None:
+        return dict(base, ok=False, message="Walk around a little so the radar can find you.")
+    rows = sorted(scan["rows"], key=lambda r: (not r["shiny"], r["distance_m"]))
+    if log:
+        shinies = sum(1 for r in rows if r["shiny"])
+        log(f"[research] {user} swept the radar: {len(rows)} nearby"
+            + (f", {shinies} shiny" if shinies else ""))
+    return dict(base, ok=True, swept=True, rows=rows, server_ms=int(time.time() * 1000),
+                lat=scan["lat"], lng=scan["lng"],
+                wait_ms=HC.radar_cooldown_left(user))
 
 
 # ------------------------------------------------------------------- HTTP (phone)
@@ -855,10 +922,22 @@ def handle(method, path, query, headers, body, log, ip=None):
     if not user:
         return _json({"error": "unknown trainer -- open the game first"}, 403)
     if rest == "ping":
-        n = _notify.get(user) or {"seq": 0, "count": 0}
-        return _json({"seq": n["seq"], "count": n["count"]})
+        n = _notify.get(user) or {"seq": 0, "tasks": {}}
+        tasks = list((n.get("tasks") or {}).values())
+        out = {"seq": n["seq"], "count": len(tasks), "level": _level(user)}
+        if len(tasks) == 1:                 # the phone draws it with its progress bar
+            out["task"] = tasks[0]
+        return _json(out)
     if rest == "events":
         return _json(events_view())
+    if rest == "radar":
+        return _json(radar_view(user, method == "POST", log))
+    if rest == "map":
+        # The radar as a MAP, for the Radar tab in the game. Served from this
+        # origin so it needs no login: rpc.user_for_ip already knows who is
+        # playing on this device.
+        return (200, {"Content-Type": "text/html; charset=utf-8",
+                      "Cache-Control": "no-store"}, MAP_PAGE.encode("utf-8"))
     if rest in ("", "state"):
         return _json(state(user))
     if rest == "claim" and method == "POST":
@@ -868,3 +947,170 @@ def handle(method, path, query, headers, body, log, ip=None):
             data = {}
         return _json(claim(user, data, log))
     return _json({"error": "not found"}, 404)
+
+
+# ------------------------------------------------------------- the map page
+# Shown inside the game, in the Research screen's Radar tab (a web view drawn
+# over Unity). Same sweep, same 500 m, same one-a-minute cooldown as the Help
+# Center's radar and the phone's list -- this is the map version of it.
+#
+# Leaflet comes from /webassets on this very origin, never a CDN: the server is
+# on the phone and often has no internet. Without tiles the map still works --
+# markers, distances and taps are all local -- so a tile failure only costs the
+# picture, and says so once.
+MAP_PAGE = r"""<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Radar</title>
+<link rel="stylesheet" href="/webassets/leaflet/leaflet.css?v=1.9.4">
+<style>
+  :root{ --ink:#22323f; --dim:#6f8190; --teal:#2fa88c; --pink:#e06a90; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#eef3f5;
+            font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+            color:var(--ink);-webkit-text-size-adjust:100%}
+  #map{position:absolute;inset:0;background:#dde6ea}
+  .bar{position:absolute;left:0;right:0;bottom:0;z-index:500;
+       padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+       background:rgba(255,255,255,.94);backdrop-filter:blur(8px);
+       border-top:1px solid #dde6ea;display:flex;align-items:center;gap:12px}
+  #sweep{flex:0 0 auto;background:var(--teal);color:#fff;border:0;border-radius:11px;
+         padding:11px 18px;font-size:15px;font-weight:700;min-width:124px}
+  #sweep:disabled{background:#b9c8d0}
+  #status{flex:1;font-size:13px;color:var(--dim)}
+  #status b{color:var(--ink)}
+  .note{position:absolute;top:10px;left:10px;right:10px;z-index:500;
+        background:rgba(255,255,255,.95);border-radius:11px;padding:10px 12px;
+        font-size:13px;color:var(--dim);box-shadow:0 2px 10px rgba(0,0,0,.12)}
+  .pin{width:46px;height:46px;margin:-23px 0 0 -23px;position:relative}
+  .pin img{width:46px;height:46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+  .pin.sh:after{content:"\2605";position:absolute;right:-1px;top:-3px;color:#f2a03d;
+                font-size:17px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+  .leaflet-popup-content{margin:10px 12px;font-size:14px}
+  .leaflet-popup-content b{display:block;font-size:15px}
+  .leaflet-popup-content span{color:var(--dim);font-size:13px}
+</style>
+
+<div id="map"></div>
+<div class="bar">
+  <button id="sweep">Sweep</button>
+  <div id="status">Looking for you…</div>
+</div>
+
+<script src="/webassets/leaflet/leaflet.js?v=1.9.4"></script>
+<script>
+if (window.L) L.Icon.Default.prototype.options.imagePath = "/webassets/leaflet/";
+const $ = id => document.getElementById(id);
+let map = null, layer = null, me = null, rows = [], cooldownUntil = 0, ticker = null;
+
+function note(text) {
+  if ($("offline")) return;
+  const n = document.createElement("div");
+  n.className = "note"; n.id = "offline"; n.textContent = text;
+  document.body.appendChild(n);
+  setTimeout(() => n.remove(), 8000);
+}
+
+function ensureMap(lat, lng) {
+  if (map || !window.L) return map;
+  try {
+    map = L.map("map", {zoomControl: false, attributionControl: false})
+           .setView([lat, lng], 17);
+    const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                              {maxZoom: 19}).addTo(map);
+    // The only thing here that needs the internet. Markers still work without it.
+    tiles.once("tileerror", () => note("No map pictures right now — the markers "
+                                     + "below are still where things are."));
+    layer = L.layerGroup().addTo(map);
+  } catch (e) { map = null; }
+  return map;
+}
+
+function drawMe(lat, lng) {
+  if (!map) return;
+  if (me) { me.setLatLng([lat, lng]); return; }
+  me = L.circleMarker([lat, lng], {radius: 8, color: "#fff", weight: 3,
+                                   fillColor: "#2b6cf6", fillOpacity: 1}).addTo(map);
+  L.circle([lat, lng], {radius: 500, color: "#2b6cf6", weight: 1,
+                        fillColor: "#2b6cf6", fillOpacity: .05}).addTo(map);
+}
+
+function icon(r) {
+  return L.divIcon({className: "", iconSize: [46, 46],
+    html: '<div class="pin' + (r.shiny ? " sh" : "") + '">'
+        + '<img src="/research/pokemon/' + r.pokemon_id + '.png" alt=""></div>'});
+}
+
+function left(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s <= 0 ? "gone" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+
+function draw() {
+  if (!map || !layer) return;
+  layer.clearLayers();
+  const now = Date.now();
+  for (const r of rows) {
+    if (r.expires_ms && r.expires_ms < now) continue;
+    L.marker([r.lat, r.lng], {icon: icon(r), zIndexOffset: r.shiny ? 1000 : 0})
+     .addTo(layer)
+     .bindPopup("<b>" + (r.shiny ? "★ " : "") + r.name + "</b>"
+              + "<span>" + r.distance_m + " m away · leaves in "
+              + left(r.expires_ms - now) + "</span>");
+  }
+}
+
+async function call(method) {
+  const r = await fetch("/research/radar", {method, headers: {"Content-Type": "application/json"}});
+  return r.json();
+}
+
+async function sweep(auto) {
+  $("sweep").disabled = true;
+  let d;
+  try { d = await call("POST"); }
+  catch (e) { $("status").textContent = "Could not reach the server."; return tick(); }
+  cooldownUntil = Date.now() + (d.wait_ms || 0);
+  if (d.lat) { ensureMap(d.lat, d.lng); drawMe(d.lat, d.lng); }
+  if (!d.ok) { $("status").textContent = d.message || "Not ready."; return tick(); }
+  if (d.swept) {
+    rows = d.rows || [];
+    if (map) map.setView([d.lat, d.lng], map.getZoom() || 17);
+    draw();
+  }
+  tick();
+}
+
+function tick() {
+  clearTimeout(ticker);
+  const wait = cooldownUntil - Date.now();
+  $("sweep").disabled = wait > 0;
+  $("sweep").textContent = wait > 0 ? "Sweep in " + Math.ceil(wait / 1000) + "s" : "Sweep";
+  if (rows.length) {
+    const live = rows.filter(r => !r.expires_ms || r.expires_ms > Date.now());
+    const sh = live.filter(r => r.shiny).length;
+    $("status").innerHTML = "<b>" + live.length + "</b> nearby"
+                          + (sh ? " · <b>" + sh + " shiny</b>" : "");
+    draw();
+  }
+  ticker = setTimeout(tick, 1000);
+}
+
+$("sweep").onclick = () => sweep(false);
+
+(async () => {
+  // Centre on the trainer before the first sweep, so the map is never blank.
+  try {
+    const d = await call("GET");
+    cooldownUntil = Date.now() + (d.wait_ms || 0);
+    if (d.lat) { ensureMap(d.lat, d.lng); drawMe(d.lat, d.lng); $("status").textContent = "Ready."; }
+    else $("status").textContent = "Open the game and walk a little so the radar can find you.";
+  } catch (e) { $("status").textContent = "Could not reach the server."; }
+  if (!window.L) note("The map could not start.");
+  tick();
+  if (cooldownUntil <= Date.now()) sweep(true);   // first sweep on open
+})();
+</script>
+</html>
+"""

@@ -120,3 +120,13 @@ sideloadlydaemon.log
 #  Research art + the game font pulled from the client (Niantic copyright; the
 #  server downloads/extracts them itself -- see research.py)
 work/server/research_art/
+
+# ----------------------------------------------------------------------------
+#  Vendored Leaflet (BSD-2, LICENSE included). Its marker/layer icons are PNGs,
+#  which the blanket *.png rule above would drop -- and a map with no markers is
+#  the bug that made us vendor it in the first place.
+# ----------------------------------------------------------------------------
+!work/server/webassets/**
+
+#  Shop and item icons lifted from the client, same reason as research_art/.
+work/server/shopicons/

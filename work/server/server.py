@@ -63,6 +63,18 @@ class Handler(BaseHTTPRequestHandler):
                 # by exact path, so it cannot shadow the game's own routes.
                 status, headers, out = bracky_site.handle(method, path, query,
                                                             self.headers, body, log)
+            elif path.startswith("/webassets/"):
+                # Leaflet, shipped with the server. The in-game map page loads
+                # it from THIS origin (the World Manager is on another port).
+                import webassets
+                status, headers, out = webassets.handle(path)
+            elif path.startswith("/radar"):
+                # The desktop radar. By PATH, before the host checks: people
+                # open it by IP from a laptop, so the Host header is whatever
+                # they typed, not one of the game's hostnames.
+                import radarsite
+                status, headers, out = radarsite.handle(method, path, query,
+                                                        self.headers, body, log)
             elif path.startswith("/shop"):
                 # Checked before the host, so the Help Center can use the shop's
                 # item art from its own origin (and so the shop is reachable on
@@ -84,6 +96,13 @@ class Handler(BaseHTTPRequestHandler):
                                                   self.headers, body, log)
             elif "pokemon.com" in host:
                 status, headers, out = sso.handle(method, path, query,
+                                                  self.headers, body, log)
+            elif path.startswith("/glm/"):
+                # Google Mobile Maps tiles -- the map's roads. Matched by PATH
+                # because the host is mobilemaps.clients.google.com, which none
+                # of the checks below would claim.
+                import gmm
+                status, headers, out = gmm.handle(method, path, query,
                                                   self.headers, body, log)
             elif path.startswith("/shiny/"):
                 # The windstock tweak asking whether what's on screen is shiny.

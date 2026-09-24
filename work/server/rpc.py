@@ -173,6 +173,11 @@ def _build_returns(reqs, username, log):
             gid, atk_ids, def_id = P.parse_start_gym_battle(msg)
             if gid:
                 _user_gym[username] = gid
+                # Rivals guarding an unclaimed gym are worked out on the fly for
+                # the map; make them real now so the battle, the prestige and
+                # taking the gym all run through the normal path.
+                import world as _wg
+                _wg.ensure_npc_defenders(gid)
             r = P.build_start_gym_battle_response(gid, atk_ids, def_id,
                                                   int(time.time() * 1000))
             returns.append(r)

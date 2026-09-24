@@ -1,0 +1,110 @@
+// Google Mobile Maps tile schema, recovered from the Pokemon GO 0.35 iOS
+// client (arm64, stripped, protobuf-lite so no embedded descriptor).
+//
+// Method: RTTI type name -> typeinfo -> vtable -> slot 13
+// (SerializeWithCachedSizes). Generated protobuf serializers call
+// WireFormatLite::Write<Type>(field_number, value, output) with the field
+// number as an immediate in w0, so field numbers and wire types read straight
+// out of the disassembly. Writer helpers, identified by the wire type they
+// emit and whether they zigzag:
+//
+//   0x1014f4228  varint, no zigzag   -> int32
+//   0x1014f4b64  varint, no zigzag   -> varint-a (int32/uint32/bool/enum)
+//   0x1014f43d0  varint, no zigzag   -> varint-b (       "              )
+//   0x1014f4560  varint, ZIGZAG      -> sint32
+//   0x1014f5b68  length-delimited    -> message
+//   0x1014f5550  length-delimited    -> string
+//   0x1014f4ed8  length-delimited    -> bytes
+//   0x1014f52f0  length-delimited    -> (string/bytes/message, undetermined)
+//   0x1014f5a44  wire type 3         -> GROUP
+//
+// WHAT IS NOT KNOWN: which submessage type sits in each message-typed field,
+// repeated-vs-optional, and the exact varint subtype where it does not change
+// the encoding. Field numbers and wire types are solid; the rest is labelled.
+//
+// Payloads are RC4'd (see gmm_crypt.py) and gzipped underneath.
+
+syntax = "proto2";
+package nia.map.gmm.proto;
+
+message MapTileResponseProto {
+  optional MapTileResponseHeader header = 1;   // message
+  repeated MapTileProto          tile   = 9;   // message
+}
+
+message MapTileResponseHeader {
+  optional int32 status  = 1;                  // varint-b
+  optional int32 unknown = 2;                  // varint-a
+}
+
+message MapTileProto {
+  optional int32 unknown1 = 1;                 // varint-a
+  optional int32 x        = 2;                 // int32
+  optional int32 y        = 3;                 // int32
+  optional int32 zoom     = 4;                 // int32
+  optional int32 unknown5 = 5;                 // varint-a
+  optional bytes payload  = 6;                 // bytes  <- the tile body
+  optional int32 unknown7 = 7;                 // varint-b
+  optional int32 unknown8 = 8;                 // int32
+}
+
+message MapTileDataProto {
+  optional MapInfoProto info = 1;              // message
+  optional string       data = 2;              // string
+}
+
+// The feature container. Fields 3 and 7 are GROUPs (wire type 3) — 2016-era
+// Google protobuf still used them.
+message GeometryProto {
+  optional int32     type     = 1;             // varint-a
+  optional MapPointProto point = 2;            // message
+  repeated group     PolyLine = 3 { }          // GROUP  -> GeometryProto_PolyLine
+  repeated group     Polygon  = 7 { }          // GROUP  -> GeometryProto_Polygon
+  optional int32     unknown13 = 13;           // message
+  optional int32     unknown14 = 14;           // message
+}
+
+message GeometryProto_PolyLine {
+  optional int32  vertex_count = 4;            // int32
+  optional int32  unknown5     = 5;            // int32
+  optional string vertices     = 6;            // string <- packed vertex blob
+}
+
+message GeometryProto_Polygon {
+  optional int32  unknown8  = 8;               // int32
+  optional int32  unknown9  = 9;               // int32
+  optional string vertices  = 10;              // string
+  optional int32  unknown11 = 11;              // int32
+  optional bytes  unknown12 = 12;              // len-d
+}
+
+message MapPointProto {
+  optional int32 x = 1;                        // int32
+  optional int32 y = 2;                        // int32
+}
+
+// Delta-encoded vertices: both fields are ZIGZAG varints, which is what the
+// "Efficient" in the name buys.
+message EfficientMapPointProto {
+  optional sint32 dx = 1;                      // sint32
+  optional sint32 dy = 2;                      // sint32
+}
+
+message PixelPointProto {
+  optional int32 x = 1;
+  optional int32 y = 2;
+  optional int32 z = 3;
+}
+
+message MapInfoProto {
+  optional CopyrightProto copyright = 1;       // message
+  optional int32 x    = 2;                     // int32
+  optional int32 y    = 3;                     // int32
+  optional int32 zoom = 4;                     // int32
+}
+
+message CopyrightProto {
+  optional string a = 1;                       // 0x1014f4c78
+  optional string b = 2;                       // 0x1014f4c78
+  optional int32  c = 3;                       // int32
+}
