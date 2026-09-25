@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="The Windstock Patcher is an open-source (GPLv3) APK patcher that removes certificate pinning from a Pokémon GO client so it talks to your own Windstock server. Ships in the repo at src/patcher/patcher.py." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="APK Patcher — Project Windstock" />
+  <meta property="og:description" content="Strips certificate pinning from your client APK. Open source, free, no launcher ceremony, no Apple-ID signing ritual." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <link rel="stylesheet" href="assets/old-school.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>APK Patcher — Project Windstock</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="index.html#world">The world</a>
+            <a class="nav-link active" href="patcher.html" aria-current="page">Patcher</a>
+            <a class="nav-link" href="downloads.html">Download</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <span class="nav-note hidden sm:inline">GPLv3 · FOSS</span>
+          </nav>
+        </div>
+      </header>
+
+      <marquee class="retro-marquee" aria-hidden="true">
+        <span>★ The Windstock Patcher ★ removes certificate pinning from your client APK ★ open source, GPLv3, no account puzzles ★ their setup needs a launcher, a browser patch and a signing ceremony; ours needs one script ★ best viewed at 800×600 ★&nbsp;&nbsp;&nbsp;</span>
+      </marquee>
+
+      <main class="patcher-main mx-auto max-w-6xl px-6 py-16">
+        <section class="patcher-intro">
+          <div class="patcher-intro-copy">
+            <div class="eyebrow-row"><span class="eyebrow-dot"></span><p class="eyebrow">Client tools · Ships in the source</p></div>
+            <h1 class="patcher-title">Your APK, <em>unpinned.</em></h1>
+            <p class="patcher-lede">The Windstock Patcher is a desktop GUI that removes certificate pinning from a Pokémon GO APK, so the client trusts your own server's local CA. It's real, it's in the repo, and the whole thing is GPLv3.</p>
+          </div>
+          <div class="patcher-device" aria-hidden="true">
+            <span class="patcher-device-orbit patcher-device-orbit-one"></span>
+            <span class="patcher-device-orbit patcher-device-orbit-two"></span>
+            <span class="patcher-device-spark patcher-device-spark-one">✦</span>
+            <span class="patcher-device-spark patcher-device-spark-two">✦</span>
+            <div class="patcher-window">
+              <div class="patcher-window-bar"><span></span><span></span><span></span><i>Windstock Patcher</i></div>
+              <div class="patcher-window-body"><div class="patcher-window-mark"><img src="assets/windstock-mark.png" alt="" /></div><strong>Project Windstock</strong><small>removing certificate pinning…</small><div class="patcher-window-line"><span></span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="patcher-status-card" aria-labelledby="patcher-status-title">
+          <div class="patcher-status-art" aria-hidden="true"><span class="patcher-sun"></span><span class="patcher-grid-line patcher-grid-line-one"></span><span class="patcher-grid-line patcher-grid-line-two"></span><span class="patcher-mountain patcher-mountain-back"></span><span class="patcher-mountain patcher-mountain-front"></span><span class="patcher-road"></span></div>
+          <div class="patcher-status-copy">
+            <div class="event-meta"><span class="event-tag">SHIPS IN THE SOURCE</span><span>src/patcher/patcher.py</span></div>
+            <h2 id="patcher-status-title">It exists. It does<br /><em>exactly one thing.</em></h2>
+            <p>Point it at a Pokémon GO 0.35 APK and it strips the certificate pinning — that's the whole job. (The 0.29 build instead needs a one-time static metadata patch; the walkthroughs in the repo cover both.) No root, and your own CA is installed on the phone, not replaced.</p>
+            <div class="patcher-build"><div><span>Form factor</span><strong>Desktop · customtkinter GUI</strong></div><div><span>Licence</span><strong>GPLv3 · read all of it</strong></div></div>
+            <div class="patcher-progress-label"><span>In the repo</span><strong>It's already shipped</strong></div>
+            <div class="patcher-progress" role="progressbar" aria-label="Patcher status" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></div>
+            <p class="patcher-progress-note">No beta-gated download button, no invite-only build. The source is one download away — because that's how open source works around here.</p>
+          </div>
+          <div class="patcher-status-number" aria-hidden="true">01</div>
+        </section>
+
+        <section class="patcher-features" aria-labelledby="patcher-features-title">
+          <div class="patcher-section-heading"><div><p class="section-kicker">The whole feature list</p><h2 id="patcher-features-title" class="section-title">Three steps.<br />Three <em>honest</em> bullets.</h2></div><p class="section-intro">Short version: pick an APK, lose the pinning, play on your world. Long version: scroll down, it's still three bullets.</p></div>
+          <div class="patcher-feature-grid">
+            <article class="patcher-feature patcher-feature-coral"><span class="patcher-feature-number">01</span><div class="patcher-feature-icon patcher-icon-refresh" aria-hidden="true">↻</div><h3>Pick an APK</h3><p>You bring the Pokémon GO 0.35 client APK. The patcher GUI takes it from there.</p></article>
+            <article class="patcher-feature patcher-feature-sage"><span class="patcher-feature-number">02</span><div class="patcher-feature-icon patcher-icon-shield" aria-hidden="true">✦</div><h3>Strip the pinning</h3><p>It removes certificate pinning so the client accepts your own server's CA. No root needed.</p></article>
+            <article class="patcher-feature patcher-feature-blue"><span class="patcher-feature-number">03</span><div class="patcher-feature-icon patcher-icon-launch" aria-hidden="true">↗</div><h3>Install and wander</h3><p>Install the patched APK, point the DNS redirector at your machine, and go. On iOS, the stock client already works without patching — over Tailscale.</p></article>
+          </div>
+        </section>
+
+        <section class="patcher-steps" aria-labelledby="patcher-steps-title">
+          <div class="patcher-steps-art" aria-hidden="true"><span class="patcher-steps-ring"></span><span class="patcher-steps-star">✦</span></div>
+          <div><p class="section-kicker">The ritual</p><h2 id="patcher-steps-title">Everyone's favourite<br /><em>three-step</em> dance.</h2></div>
+          <div class="patcher-step-list"><div><span>01</span><p><strong>Open</strong><br />Run the Windstock Patcher.</p></div><div><span>02</span><p><strong>Pick</strong><br />Select your client APK.</p></div><div><span>03</span><p><strong>Wander</strong><br />Install it and go catch something.</p></div></div>
+        </section>
+
+        <section class="patcher-cta">
+          <div><p class="section-kicker">Meanwhile, elsewhere</p><h2>No launcher.<br /><em>No signing ceremony.</em></h2></div>
+          <p>Kanto's setup hands you their launcher and browser patcher, “gets the matching original app”, and on iPhone makes you sign and sideload the IPA with your own Apple ID. Windstock's flow is one script that deletes a pin. The fancier version is over there; the open version is here.</p>
+          <p><a class="retro-btn" href="downloads.html">Download the source ↗</a> <a class="button button-primary" href="status.html"><span>Check server status</span><span aria-hidden="true">↗</span></a></p>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Built by <a class="footer-link" href="https://github.com/chucny" target="_blank" rel="noopener">chucny</a> &amp; <a class="footer-link" href="https://github.com/bracky-dev" target="_blank" rel="noopener">bracky-dev</a> · Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 pb-8">
+          <p class="retro-footnote" style="margin:0">we're not Kanto. Free forever! · established August 2026</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/motion.js"></script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Is the world still online? For Project Windstock that means one question: does the GitHub repository still exist? The status page asks GitHub once a minute." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Is the World Online? — Project Windstock" />
+  <meta property="og:description" content="Is the world still online? The status page checks whether the GitHub repository still exists, once a minute." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <link rel="stylesheet" href="assets/old-school.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Is the World Online? — Project Windstock</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="index.html#world">The world</a>
+            <a class="nav-link" href="patcher.html">Patcher</a>
+            <a class="nav-link" href="downloads.html">Download</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link active" href="status.html" aria-current="page">Status</a>
+            <span class="nav-note hidden sm:inline">GPLv3 · FOSS</span>
+          </nav>
+        </div>
+      </header>
+
+      <marquee class="retro-marquee" aria-hidden="true">
+        <span>★ Live signal ★ the page asks GitHub once a minute whether the repo still exists ★ is the world online? look below ★ if the repo is gone, the world is gone — and we'll be honest about it ★ best viewed at 800×600 ★&nbsp;&nbsp;&nbsp;</span>
+      </marquee>
+
+      <main class="status-main mx-auto max-w-6xl px-6 py-16">
+        <div class="status-intro">
+          <div>
+            <div class="eyebrow-row"><span class="eyebrow-dot"></span><p class="eyebrow">Field notes · Live signal</p></div>
+            <h1 class="status-title">Is the world<br /><em>online?</em></h1>
+            <p class="status-lede">A quick pulse check for trainers. Once a minute the page asks GitHub whether the repository still exists — because here the world is open source, and the world is only ever one repo away.</p>
+          </div>
+          <div class="status-doodle" aria-hidden="true"><span class="doodle-line doodle-line-one"></span><span class="doodle-line doodle-line-two"></span><span class="doodle-sun"></span><span class="doodle-mountain doodle-mountain-back"></span><span class="doodle-mountain doodle-mountain-front"></span></div>
+        </div>
+
+        <div id="alert"></div>
+
+        <section class="status-panel" aria-labelledby="state">
+          <div class="status-panel-top">
+            <div class="status-label-row"><span class="status-pulse" id="dot" aria-hidden="true"></span><div><p class="panel-kicker">Current signal</p><h2 id="state" class="status-state">Online</h2></div></div>
+            <div class="status-live"><span class="live-dot"></span> Auto-refreshing</div>
+          </div>
+          <p class="status-blurb" id="blurb">Asking GitHub whether the world is still there. Since the whole server is open source, "is the world online?" and "does the repo exist?" are the same question.</p>
+          <dl class="status-stats">
+            <div><dt>Last updated</dt><dd id="updated">Aug 21, 2026, 1:00 AM</dd></div>
+            <div><dt>Last checked</dt><dd id="checked">Aug 30, 2026, 12:15 PM</dd></div>
+            <div><dt>Response time</dt><dd id="rt">147 ms</dd></div>
+          </dl>
+        </section>
+
+        <section class="chart-panel" aria-labelledby="chart-title">
+          <div class="chart-heading"><div><p class="panel-kicker">A little history</p><h2 id="chart-title">Response time</h2></div><p>Last 10 hours · outages shaded</p></div>
+          <div id="chart"><p class="text-sm text-muted-foreground">Collecting data… the chart appears after a couple of checks.</p></div>
+        </section>
+
+        <div class="status-actions">
+          <button type="button" class="button button-primary" id="checkNow"><span>Check now</span><span aria-hidden="true">↗</span></button>
+          <p>Something looks off? A public repo either exists or it doesn't — no billing mystery either way. If GitHub says the world went quiet, we'll say so, because the code is right there in the repo for you to check.</p>
+        </div>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Built by <a class="footer-link" href="https://github.com/chucny" target="_blank" rel="noopener">chucny</a> &amp; <a class="footer-link" href="https://github.com/bracky-dev" target="_blank" rel="noopener">bracky-dev</a> · Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 pb-8">
+          <p class="retro-footnote" style="margin:0">we're not Kanto. Free forever! · established August 2026</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <section aria-label="Notifications alt+T" tabindex="-1" aria-live="polite" aria-relevant="additions text" aria-atomic="false"></section>
+  <script src="assets/status.js"></script>
+  <script src="assets/motion.js"></script>
+</body>
+</html>

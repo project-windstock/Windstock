@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Project Windstock is an open-source (GPLv3), self-hosted Pokémon GO 0.29 private server. Any name, any password, no Discord sign-in, no supporter plans. We're not Kanto. Free forever." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Project Windstock — We're not Kanto. Free forever." />
+  <meta property="og:description" content="Open-source, self-hosted Pokémon GO 0.29 server. Log in from the game with any trainer name — no account, no paywall, no Discord required." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="preload" as="image" href="assets/windstock-mark.png" />
+  <link rel="preload" as="image" href="assets/hero.jpg" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <link rel="stylesheet" href="assets/old-school.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Project Windstock — Open-Source Pokémon GO 0.29 (we're not Kanto)</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html" aria-current="page">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="#world">The world</a>
+            <a class="nav-link" href="patcher.html">Patcher</a>
+            <a class="nav-link" href="downloads.html">Download</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <span class="nav-note hidden sm:inline">GPLv3 · FOSS</span>
+          </nav>
+        </div>
+      </header>
+
+      <marquee class="retro-marquee" aria-hidden="true">
+        <span>★ Project Windstock — official site ★ we're not Kanto. Free forever! ★ no Discord sign-in, no supporter plans, no £5.99/mo scanner ★ open source — read every line of code ★ if your monthly bill is a Pokémon, this is the wrong server ★ best viewed at 800×600 ★&nbsp;&nbsp;&nbsp;</span>
+      </marquee>
+
+      <main>
+        <section class="hero-section relative overflow-hidden border-b border-border/60">
+          <img src="assets/hero.jpg" alt="Mountain ridges at dawn" width="1536" height="1024" class="hero-image absolute inset-0 size-full object-cover" />
+          <div class="hero-wash absolute inset-0"></div>
+          <div class="hero-glow hero-glow-one" aria-hidden="true"></div>
+          <div class="hero-glow hero-glow-two" aria-hidden="true"></div>
+          <div class="wind-gust" aria-hidden="true"><span style="top: 26%; animation-delay: .1s"></span><span style="top: 43%; animation-delay: .28s"></span><span style="top: 67%; animation-delay: .46s"></span></div>
+
+          <div class="hero-content relative mx-auto max-w-6xl px-6">
+            <div class="hero-copy">
+              <div class="eyebrow-row">
+                <span class="eyebrow-dot"></span>
+                <p class="eyebrow">Open source · GPLv3 · July 2016, rediscovered</p>
+              </div>
+              <h1 class="hero-title">The 2016 world, <em>without the bill.</em></h1>
+              <p class="hero-lede">Windstock is a from-scratch, self-hosted Pokémon GO 0.29 server. Log in from the game with any name and any password, keep the world on your own PC, and play the original — no Discord sign-in, no 18+ card counting, no supporter plans.</p>
+              <div class="hero-actions">
+                <a class="button button-primary" href="#world"><span>Explore the world</span><span aria-hidden="true">↗</span></a>
+                <a class="button button-quiet" href="https://github.com/project-windstock/windstock" target="_blank" rel="noopener">Read every line of code <span aria-hidden="true">→</span></a>
+              </div>
+              <div class="trust-row" aria-label="Project promises">
+                <span><strong>01</strong> Open source (GPLv3)</span>
+                <span><strong>02</strong> No Discord required</span>
+                <span><strong>03</strong> Supporter plans: £0.00</span>
+              </div>
+            </div>
+
+            <div class="hero-orbit" aria-hidden="true">
+              <span class="orbit orbit-one"></span>
+              <span class="orbit orbit-two"></span>
+              <span class="orbit orbit-three"></span>
+              <span class="orbit-spark spark-one"></span>
+              <span class="orbit-spark spark-two"></span>
+              <span class="orbit-spark spark-three"></span>
+              <div class="hero-badge">
+                <span class="hero-badge-label">Windstock</span>
+                <span class="hero-badge-value">01</span>
+                <span class="hero-badge-caption">one word: free</span>
+              </div>
+            </div>
+          </div>
+          <div class="scroll-cue" aria-hidden="true"><span></span><small>Scroll to discover</small></div>
+        </section>
+
+        <section id="world" class="world-section mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">What actually works, listed</p>
+              <h2 class="section-title">The world, for real.</h2>
+            </div>
+            <p class="section-intro">Everything below is running in the server right now — we're not going to describe features we haven't built. The one honest caveat lives at the bottom, because open source means telling the truth.</p>
+          </div>
+
+          <div class="world-gallery" aria-label="Windstock in action">
+            <figure class="world-gallery-card world-gallery-card-squirtle"><img src="assets/world-squirtle.png" alt="Squirtle detail screen from the Windstock game" loading="lazy"><figcaption><span>Field notes · 01</span><strong>Every catch has a story.</strong></figcaption></figure>
+            <figure class="world-gallery-card world-gallery-card-pikachu"><img src="assets/world-pikachu.png" alt="Pikachu encounter in a grassy field from the Windstock game" loading="lazy"><figcaption><span>Field notes · 02</span><strong>Some moments find you.</strong></figcaption></figure>
+            <figure class="world-gallery-card world-gallery-card-shop"><img src="assets/world-shop.png" alt="In-game shop showing items and Poké Ball bundles" loading="lazy"><figcaption><span>Field notes · 03</span><strong>Useful things, earned in-game.</strong></figcaption></figure>
+            <figure class="world-gallery-card world-gallery-card-windstock"><img src="assets/world-windstock.png" alt="Windstock launcher screen for Pokémon GO 0.35" loading="lazy"><figcaption><span>Field notes · 04</span><strong>Your way into the world.</strong></figcaption></figure>
+          </div>
+
+          <div class="feature-grid mt-10">
+            <article class="feature-card feature-card-large feature-card-terrain">
+              <div class="feature-card-art terrain-art" aria-hidden="true"><span class="terrain-sun"></span><span class="terrain-hill terrain-hill-back"></span><span class="terrain-hill terrain-hill-front"></span><span class="terrain-path"></span></div>
+              <div class="feature-card-body"><span class="card-index">01 / 06</span><h3>Wild Pokémon match the terrain.</h3><p>Real biomes from OpenStreetMap — water, woods, city streets — lean toward their own types. Not gated by a paid “scanner”.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-coral">
+              <div class="feature-icon icon-ball" aria-hidden="true"><span></span></div>
+              <div class="feature-card-body"><span class="card-index">02 / 06</span><h3>Any name. Any password.</h3><p>No third-party login, no “you must sign in with Discord first”, no age gate. Type a trainer name, walk out the door.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-sage">
+              <div class="feature-icon icon-leaf" aria-hidden="true"><span></span><i></i></div>
+              <div class="feature-card-body"><span class="card-index">03 / 06</span><h3>Nests, on a schedule.</h3><p>Nests shift over time. The corner you like stays yours — no reservation fee, no “limited to 151” places.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-blue">
+              <div class="feature-icon icon-egg" aria-hidden="true"><span></span></div>
+              <div class="feature-card-body"><span class="card-index">04 / 06</span><h3>Walk it out.</h3><p>Eggs hatch by real distance: one unlimited incubator, plus 3-use basic ones, just like 2016. Hatching has never required a subscription.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+            </article>
+            <article class="feature-card feature-card-ink">
+              <div class="feature-card-body"><span class="card-index">05 / 06</span><h3>Gyms you train, not fees you feed.</h3><p>Deploy, train prestige, take gyms, hold them for the defender bonus. 2016 type matchups. The coins are in-game, earned by the game.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+              <div class="ink-rings" aria-hidden="true"><span></span><span></span><span></span></div>
+            </article>
+            <article class="feature-card feature-card-sand">
+              <div class="feature-card-body"><span class="card-index">06 / 06</span><h3>A Shop that can’t charge you.</h3><p>There is an in-game shop, and it sells items for coins you earn by playing. That’s the entire business model. There is nothing on this server that costs a card.</p><span class="card-arrow" aria-hidden="true">↗</span></div>
+              <div class="coin-stack" aria-hidden="true"><span></span><span></span><span></span></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="manifesto-section border-y border-border/60">
+          <div class="manifesto-inner mx-auto max-w-6xl px-6">
+            <div class="manifesto-stamp" aria-hidden="true"><span>Est.</span><strong>Aug ’26</strong><i>made for exploring</i></div>
+            <div class="manifesto-copy"><p class="section-kicker">The Windstock promise</p><h2>Not a copy.<br /><em>An original.</em></h2><p>This is a built-from-scratch server — the exact 0.29 protocol, reverse-engineered to the field number, answered request by request. GPLv3, public source, and self-hosted: your world, your data, your machine. Nobody here is quietly “keeping the servers funded”.</p></div>
+            <div class="manifesto-list"><div><span>✳</span><p><strong>Be nice.</strong><br />This is a world we share.</p></div><div><span>✳</span><p><strong>Read the code.</strong><br />Everything is GPLv3 on GitHub. Believing is for the other guy.</p></div><div><span>✳</span><p><strong>Progress follows you.</strong><br />Saves are files on disk. Back them up, move them, own them.</p></div></div>
+          </div>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="tiers-section mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="retro-kicker">Our supporter plans (all of them)</p>
+              <h2 class="retro-title">Choosing a tier<br /><em>takes seconds.</em></h2>
+            </div>
+            <p class="section-intro">Kanto.ac sells Pikachu at £5.99/mo, Charizard at £11.99/mo, and Mew at £79.98 one-time — “limited to 151” places. We checked their price list so you don’t have to. Ours is printed in full below.</p>
+          </div>
+
+          <div class="tier-grid">
+            <article class="tier-card">
+              <div class="tier-card-head"><span>Pikachu</span><small>Kanto sells this for £5.99 / month</small></div>
+              <div class="tier-card-body">
+                <div class="tier-price">£0.00<small>a little spark of free</small></div>
+                <p class="tier-line">Scanner range: the entire real map, always on.</p>
+                <p class="tier-line">Storage: the bag the game shipped with, never unlocked by wire.</p>
+                <p class="tier-line fresh">Same name, no monthly reminder to cancel.</p>
+              </div>
+            </article>
+            <article class="tier-card">
+              <div class="tier-card-head"><span>Charizard</span><small>Kanto sells this for £11.99 / month</small></div>
+              <div class="tier-card-body">
+                <div class="tier-price">£0.00<small>more range. more reward.</small></div>
+                <p class="tier-line">1 km scanner at Kanto: “Shiny Charm while subscribed”.</p>
+                <p class="tier-line">At Windstock: the same map, no charm, no expiry date.</p>
+                <p class="tier-line fresh">We would never know how to hide spawns behind a tier.</p>
+              </div>
+            </article>
+            <article class="tier-card ok">
+              <div class="tier-card-head"><span>Mew</span><small>Kanto sells this for £79.98 once, 151 places</small></div>
+              <div class="tier-card-body">
+                <div class="tier-price">£0.00<small>a place in the world, forever</small></div>
+                <p class="tier-line">“A place in Kanto, forever” — for £79.98, once.</p>
+                <p class="tier-line">Our world has no numbered seats. Everyone gets one.</p>
+                <p class="tier-line fresh">Measure once, free forever. Or, you know, just free forever.</p>
+              </div>
+            </article>
+          </div>
+
+          <p class="retro-footnote" style="margin-top:30px">The honesty clause: “as shown on kanto.ac”. Their prices, their limits, their choice. We only borrowed the names for the joke; we won’t be taking the payments.</p>
+
+          <table class="retro-table" style="margin-top:34px">
+            <thead>
+              <tr><th></th><th>Kanto.ac</th><th>Windstock</th></tr>
+            </thead>
+            <tbody>
+              <tr><th>Signing in</th><td>Discord login required to play</td><td>any name, any password</td></tr>
+              <tr><th>Age</th><td>18 or over only</td><td>be a trainer</td></tr>
+              <tr><th>Catch rules</th><td>“2016. Harder catches.”</td><td>2016 catch physics, throw scoring, curveballs, berries</td></tr>
+              <tr><th>Supporter plans</th><td>£5.99 / £11.99 / £79.98 + LootLabs tasks</td><td>£0.00 / £0.00 / £0.00</td></tr>
+              <tr><th>Scanner</th><td>500 m or 1 km while subscribed</td><td>the whole map, no subscription</td></tr>
+              <tr><th>Storage</th><td>+100 / +200 / +500 slots, sold separately</td><td>never sold, never had a price</td></tr>
+              <tr><th>Setup</th><td>launcher/browser patcher; iPhone needs Apple-ID sideload</td><td>open-source APK patcher (strips cert pinning); stock iOS client over Tailscale</td></tr>
+              <tr><th>Your world</th><td>progress “stays on the server”</td><td>progress is a file on a machine you choose; copies are free</td></tr>
+              <tr><th>Source code</th><td>a price list</td><td>GPLv3 on GitHub, all of it</td></tr>
+            </tbody>
+          </table>
+
+          <p class="retro-footnote" style="margin-top:18px">* We host a free world and a free joke. The only thing either Kanto-line on this page bills is a laugh.</p>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="receipts-section mx-auto max-w-4xl px-6 py-16">
+          <p class="retro-kicker">Receipts · sent, not forged</p>
+          <h2 class="retro-title" style="max-width:760px">The other side's<br /><em>customer support.</em></h2>
+          <p class="section-intro">When their proprietary translation layer was ripped out of an APK, an operator of the paid Kanto server messaged a trainer this — verbatim, unretouched, quoted in full. We frame it so nobody ever misses the point again:</p>
+
+          <div class="retro-window" style="margin-top:26px;max-width:760px">
+            <div class="retro-window-bar"><b></b><b></b><b></b><i>Kanto — direct message · saved for the record</i></div>
+            <div class="retro-window-body">
+              <p style="margin:0 0 10px;color:var(--muted-foreground);font-size:12px">Received shortly after the APK extraction. Their spelling, their tone, their choice:</p>
+              <blockquote class="receipts-quote">You've made ur mind up, you've ruined your reputation
+And I never want to speak with you ever again.
+Either get some mental health help, or off yourself before you're 18
+Either option I don't care</blockquote>
+            </div>
+          </div>
+
+          <p class="retro-footnote" style="margin-top:16px">That is how a server whose tagline is "always free to play, supporting is optional" talks to criticism. We couldn't write a worse advert for them ourselves, so we let them. <b>Kanto: not the good guys.</b></p>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="closing-section mx-auto max-w-3xl px-6 py-24 text-center">
+          <div class="closing-mark" aria-hidden="true"><img src="assets/windstock-mark.png" alt="" width="52" height="52" /></div>
+          <p class="section-kicker">The honest part we promised</p>
+          <h2>Read the fine print.<br /><em>Then read the source.</em></h2>
+          <p class="closing-copy">Open source means we tell you what doesn’t work: gym defender counter-attacks don’t animate, and 3D models need genuine 2016 asset bundles (until then, the client’s 2D icons). That level of disclosure is also free. Project Windstock is GPLv3 — the code is public, your server can be your own, and the world stays free forever.</p>
+          <a class="button button-primary" href="status.html">See if the world is online <span aria-hidden="true">↗</span></a>
+          <p class="closing-note">we’re not Kanto. Free forever! — happy catching, go catch ’em all!</p>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Built by <a class="footer-link" href="https://github.com/chucny" target="_blank" rel="noopener">chucny</a> &amp; <a class="footer-link" href="https://github.com/bracky-dev" target="_blank" rel="noopener">bracky-dev</a> · Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 pb-8">
+          <p class="retro-footnote" style="margin:0">we’re not Kanto. Free forever! · established August 2026</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/motion.js"></script>
+</body>
+</html>

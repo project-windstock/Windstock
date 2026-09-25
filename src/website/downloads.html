@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Download Project Windstock from GitHub — grab the latest build from the main branch, clone the source, get the prebuilt Android host app APK, and browse the releases. Free forever, GPLv3." />
+  <meta property="og:site_name" content="Project Windstock" />
+  <meta property="og:title" content="Download Windstock — Project Windstock" />
+  <meta property="og:description" content="Grab the latest Windstock build straight from GitHub, main branch. Free forever, no accounts, no supporter plans." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.png" type="image/png" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/motion-safe.css" />
+  <link rel="stylesheet" href="assets/old-school.css" />
+  <script>
+    try {
+      if (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) {}
+  </script>
+  <title>Download Windstock — Project Windstock</title>
+</head>
+<body>
+  <div class="wind-page">
+    <div class="min-h-screen bg-background text-foreground">
+      <header class="site-header sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+        <div class="site-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <a class="brand flex items-center gap-2.5" href="index.html">
+            <span class="brand-mark"><img src="assets/windstock-mark.png" alt="" width="32" height="32" /></span>
+            <span class="font-semibold tracking-tight">Project Windstock</span>
+          </a>
+          <nav class="flex items-center gap-5 text-xs uppercase tracking-[0.2em] text-muted-foreground" aria-label="Primary navigation">
+            <a class="nav-link" href="index.html#world">The world</a>
+            <a class="nav-link" href="patcher.html">Patcher</a>
+            <a class="nav-link active" href="downloads.html" aria-current="page">Download</a>
+            <a class="nav-link" href="invite.html">Join</a>
+            <a class="nav-link" href="status.html">Status</a>
+            <span class="nav-note hidden sm:inline">GPLv3 · FOSS</span>
+          </nav>
+        </div>
+      </header>
+
+      <marquee class="retro-marquee" aria-hidden="true">
+        <span>★ Project Windstock — official download centre ★ the latest code lives on the main branch ★ newest release ships a prebuilt Android server app ★ every download is free forever ★ no supporter plans, no pay-later buttons ★ best viewed at 800×600 ★&nbsp;&nbsp;&nbsp;</span>
+      </marquee>
+
+      <main>
+        <section class="dl-hero mx-auto max-w-6xl px-6 py-16 text-center">
+          <div class="retro-sign">
+            <small>Welcome to the</small>
+            <strong>Download Depot</strong>
+            <small>est. August 2026 · always free</small>
+          </div>
+          <p class="retro-kicker" style="margin-top:26px">Take the whole world with you</p>
+          <h1 class="retro-title" style="margin-inline:auto">Get <em>Windstock</em>.</h1>
+          <p class="dl-lede mx-auto" style="max-width:560px;margin-top:16px;color:var(--muted-foreground);line-height:1.6">
+            The latest code lives on the <b>main</b> branch of
+            <b>github.com/project-windstock/windstock</b>. Download the source, clone it,
+            or grab the newest release — which ships a prebuilt Android app that hosts the
+            whole server on your phone.
+          </p>
+          <p style="margin-top:18px"><span class="pixel-badge blink">FREE</span> <span class="pixel-badge">NO ACCOUNTS</span> <span class="pixel-badge">GPLv3</span></p>
+
+          <div class="download-grid">
+            <a class="download-box" href="https://github.com/project-windstock/windstock/archive/refs/heads/main.zip">
+              <h3>→ Download .zip</h3>
+              <p>The whole Windstock project, zipped up fresh from the main branch. Unzip anywhere and follow the README.</p>
+              <span class="retro-btn">Grab the zip ↗</span>
+            </a>
+            <a class="download-box" href="https://github.com/project-windstock/windstock/archive/refs/heads/main.tar.gz">
+              <h3>→ Download .tar.gz</h3>
+              <p>Prefer a tarball? Same main-branch code, same fun, one fewer zipper to argue with. For the CLI crowd.</p>
+              <span class="retro-btn">Grab the tarball ↗</span>
+            </a>
+            <a class="download-box" href="https://github.com/project-windstock/windstock" target="_blank" rel="noopener">
+              <h3>→ View on GitHub</h3>
+              <p>Stars, issues, the whole open-source show. Read the history, watch it grow, find out what's cooking.</p>
+              <span class="retro-btn">Open repo ↗</span>
+            </a>
+          </div>
+
+          <div class="retro-window mx-auto" style="margin-top:22px;max-width:640px;text-align:left">
+            <div class="retro-window-bar"><b></b><b></b><b></b><i>windstock-shell — terminal purists only</i></div>
+            <div class="retro-window-body">
+              <p style="margin:0 0 10px">Prefer to pull it yourself?</p>
+              <div class="clone-block"><b>$</b> git clone https://github.com/project-windstock/windstock.git</div>
+              <p style="margin:12px 0 0;color:var(--muted-foreground)"><b>main</b> is the default branch, and the README is your map.</p>
+            </div>
+          </div>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="dl-extra mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="retro-kicker">What's in the box</p>
+              <h2 class="retro-title">One repo.<br /><em>Whole world.</em></h2>
+            </div>
+            <p class="section-intro">Grab the source and you get the server, the phone host, the patcher, the tools, and this very website — everything Windstock is made of, in one tidy download.</p>
+          </div>
+
+          <table class="retro-table" style="margin-top:26px">
+            <thead><tr><th>Part</th><th>What it does</th><th>Where it lives</th></tr></thead>
+            <tbody>
+              <tr><td>Game server</td><td>The Pokémon world — spawns, stops, gyms, biomes, saves; 0.29 protocol answered end to end</td><td><code>src/server/</code></td></tr>
+              <tr><td>Phone host app</td><td>Hosts the server locally on your Android phone; prebuilt APK attached to v1.4.2-beta (source here)</td><td><code>src/app/</code></td></tr>
+              <tr><td>APK patcher</td><td>Desktop GUI that strips certificate pinning from your client APK</td><td><code>src/patcher/patcher.py</code></td></tr>
+              <tr><td>Tools &amp; scripts</td><td>Game-master converter, protobuf metadata reader, cross-platform dependency installer</td><td><code>src/tools/</code> · <code>src/scripts/</code></td></tr>
+              <tr><td>Brand kit</td><td>Mark, icon, and the windstock look</td><td><code>src/server/brand/</code></td></tr>
+              <tr><td>This website</td><td>The very page you're reading, source and all</td><td><code>windstock site/</code></td></tr>
+              <tr><td>Licence</td><td>GPLv3 — read it, run it, change it, share it</td><td><code>LICENSE</code></td></tr>
+            </tbody>
+          </table>
+
+          <p class="retro-footnote" style="margin-top:14px">Needs Python 3 (or a phone — the new app hosts it). OpenSSL for the local CA. Full walkthroughs live in <code>src/server/DEVICE_SETUP.md</code>, <code>RUN.md</code> and <code>VPN.md</code>.</p>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="dl-releases mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="retro-kicker">Release log</p>
+              <h2 class="retro-title">Every <em>version</em> goes here.</h2>
+            </div>
+            <p class="section-intro">Newest first, straight from the GitHub releases. The newest release even carries a prebuilt APK — a luxury we'll never sell, only attach for free.</p>
+          </div>
+
+          <table class="retro-table" style="margin-top:26px">
+            <thead><tr><th>Release</th><th>Notes</th><th>Get it</th></tr></thead>
+            <tbody>
+              <tr><td><b>v1.4.2-beta</b> <span class="pixel-badge">LATEST</span></td><td>New Windstock Android app — host the server locally on your phone. Prebuilt <code>app-debug.apk</code> attached</td><td><a href="https://github.com/project-windstock/windstock/releases/tag/v1.4.2-beta" target="_blank" rel="noopener">GitHub ↗</a></td></tr>
+              <tr><td><b>v1.3.6-beta</b></td><td>Lure modules now spawn 5 bonus spawns, <code>/clearlog</code> clears the printed log, 20+ files cleaned up</td><td><a href="https://github.com/project-windstock/windstock/releases/tag/v1.3.6-beta" target="_blank" rel="noopener">GitHub ↗</a></td></tr>
+              <tr><td><b>v1.2.2-beta-backup</b></td><td>A non-production test backup release — saved from the before-times</td><td><a href="https://github.com/project-windstock/windstock/releases/tag/v1.2.2-beta-backup" target="_blank" rel="noopener">GitHub ↗</a></td></tr>
+              <tr><td><b>v1.0-beta</b></td><td>The very first release of Windstock. Where it all began</td><td><a href="https://github.com/project-windstock/windstock/releases/tag/v1.0-beta" target="_blank" rel="noopener">GitHub ↗</a></td></tr>
+            </tbody>
+          </table>
+
+          <p style="margin-top:18px"><a class="retro-btn" href="https://github.com/project-windstock/windstock/releases" target="_blank" rel="noopener">See all releases ↗</a></p>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="dl-roast mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="retro-kicker">The other server's price list</p>
+              <h2 class="retro-title">What you're <em>not</em> buying.</h2>
+            </div>
+            <p class="section-intro">Kanto's supporter shop sells a scanner, more storage, welcome gifts and a “Shiny Charm”. We're just showing our receipts so the difference lands somewhere near home plate.</p>
+          </div>
+
+          <table class="retro-table" style="margin-top:26px">
+            <thead><tr><th>Kanto.ac sells</th><th>At Windstock</th></tr></thead>
+            <tbody>
+              <tr><td>Scanner — 500 m / 1 km, while subscribed (£5.99–£11.99/mo)</td><td>The real map. It's what the game shows. Free.</td></tr>
+              <tr><td>Extra item &amp; Pokémon storage (+100 / +200 / +500 slots)</td><td>Space was never for sale. You keep the bag the game gave you.</td></tr>
+              <tr><td>Welcome gifts — Incense, Lucky Eggs, Lures, Master Balls (per paid tier)</td><td>Found at PokéStops and in level rewards, same as 2016.</td></tr>
+              <tr><td>Shiny Charm — while subscribed, or £79.98 one-time</td><td>Not sold here. We don't put game features behind a till.</td></tr>
+              <tr><td>Private Discord chats (Pikachu / Charizard / Mew)</td><td>Discord itself is optional. Playing needs only a name.</td></tr>
+              <tr><td>“LootLabs tasks” to fund the servers</td><td>Our server is funded by electricity and spite. No chores.</td></tr>
+            </tbody>
+          </table>
+
+          <p class="retro-footnote" style="margin-top:14px">* The other side's prices and perks are summarised from their supporter page on the day we wrote this. We checked twice. Once, even — the second check was just for the joke.</p>
+        </section>
+
+        <div class="checker-strip" aria-hidden="true"></div>
+
+        <section class="dl-more mx-auto max-w-6xl px-6 py-16">
+          <div class="section-heading">
+            <div>
+              <p class="retro-kicker">And more</p>
+              <h2 class="retro-title">Still <em>hungry?</em></h2>
+            </div>
+            <p class="section-intro">The download is just the start. Here's the rest of the map.</p>
+          </div>
+
+          <div class="download-grid">
+<a class="download-box" href="invite.html">
+              <h3>Join the community</h3>
+              <p>Text @chucny on Discord and step inside. No codes, no login flow — bring a trainer name and say hello.</p>
+              <span class="retro-btn">Get invited ↗</span>
+            </a>
+            <a class="download-box" href="status.html">
+              <h3>Check server status</h3>
+              <p>Wondering if the world is awake? The status page asks GitHub whether the repository — and the world — still exists.</p>
+              <span class="retro-btn">Check now ↗</span>
+            </a>
+            <a class="download-box" href="patcher.html">
+              <h3>APK patcher</h3>
+              <p>Strips certificate pinning from your client APK so it talks to your own server. Ships in the repo.</p>
+              <span class="retro-btn">Peek at it ↗</span>
+            </a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer border-t border-border/60">
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
+          <div class="footer-brand"><img src="assets/windstock-mark.png" alt="" width="24" height="24" /><span>Project Windstock</span></div>
+          <p>Built by <a class="footer-link" href="https://github.com/chucny" target="_blank" rel="noopener">chucny</a> &amp; <a class="footer-link" href="https://github.com/bracky-dev" target="_blank" rel="noopener">bracky-dev</a> · Fan project · Not affiliated with Niantic or Nintendo.</p>
+        </div>
+        <div class="footer-inner mx-auto flex max-w-6xl items-center justify-between px-6 pb-8">
+          <p class="retro-footnote" style="margin:0">we're not Kanto. Free forever! · established August 2026</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script src="assets/motion.js"></script>
+</body>
+</html>
