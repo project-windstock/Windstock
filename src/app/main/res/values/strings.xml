@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Windstock</string>
+    <string name="server_channel_name">Windstock server</string>
+    <string name="server_notification_title">Windstock server</string>
+    <string name="server_notification_text">Your icy Pokémon GO 0.29 server is live</string>
+    <string name="tunnel_channel_name">Windstock tunnel</string>
+    <string name="tunnel_notification_title">Windstock tunnel</string>
+    <string name="tunnel_notification_text">On-phone VPN tunnel active</string>
+</resources>

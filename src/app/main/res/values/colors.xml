@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="windstock_bg">#F6FBFF</color>
+    <color name="windstock_ice">#E6F7FF</color>
+    <color name="windstock_cyan">#1FA6C9</color>
+    <color name="windstock_frost">#EAF9FF</color>
+    <color name="windstock_ember">#FFC978</color>
+</resources>
