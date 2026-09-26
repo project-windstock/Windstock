@@ -110,7 +110,10 @@ DEFAULTS = {
         },
     },
     "gyms": {
-        "chance_per_l15_cell": 0.25,   # ~1 gym per 4 level-15 cells
+        "chance_per_l15_cell": 0.2,    # procedural forts: ~1 gym per 5 stops
+        # Real-map (OSM) forts: one gym for every this many PokeStops, decided per
+        # ~300m cell with parks getting the gym first. Hot-reloads.
+        "stops_per_gym": 5,
         # true = trainers pick their own team in game at level 5 (Mystic/Valor/
         # Instinct), the real 2016 way. false = everyone is auto-assigned the
         # "team" below and the choice screen never shows. Note: with this on, an
@@ -154,7 +157,9 @@ DEFAULTS = {
                                     # crash the 2016 client on a real device.
         "refresh_minutes": 15,
         "how_many_near_you": 5,
-        "per_stop": 5,              # wild Pokemon scattered around each stop's area
+        "per_stop": 8,              # spawn points around each stop (~1 in 4 is up at a time)
+        # Parks get this many times per_stop, spread over the park (15-120m).
+        "park_spawn_multiplier": 3,
         "nearest_distance_m": 25,
         "farthest_distance_m": 65,
         # Cells further than this from you get no wild Pokemon (0 = no limit).
@@ -201,12 +206,17 @@ DEFAULTS = {
         # How big a biome region is, as an S2 cell level. Lower = bigger regions.
         # 12 is ~3 km across; 13 ~1.5 km, 11 ~6 km.
         "biome_size": 12,
-        # Nests: like 2016, ~1 region in 3 spawns mostly ONE species, and which
+        # Nests: like the real game, parks spawn mostly ONE species, and which
         # species rotates on a cycle so nests are worth re-checking.
         "nests": True,
-        # Chance a spawn inside a nest region is the nest species (the rest are
+        # Share of parks that are a nest in any one cycle.
+        "park_nest_share": 0.67,
+        # Chance a spawn in a nesting park is the nest species (the rest are
         # normal biome spawns, so a nest is a strong bias, not the only thing).
-        "nest_chance": 0.55,
+        "nest_chance": 0.6,
+        # The old model: ~1 in 8 whole ~3 km regions is a nest. Off -- nests are
+        # in parks now.
+        "region_nests": False,
         # How often nests rotate to a new species, in days (2016 was ~14).
         "nest_rotation_days": 14,
         # Day/night: nocturnal Pokemon (Zubat, ghosts, ...) favour the dark and
@@ -473,9 +483,13 @@ _README = [
     "                          (water by water, rock on hills, city trash downtown)",
     "   biome_size ........... how large each biome region is (S2 cell level; 12",
     "                          is ~3 km, lower = bigger regions)",
-    "   nests ................ true = ~1 region in 3 spawns mostly one species,",
-    "                          rotating on a cycle (like the 2016 nests)",
+    "   per_stop ............. spawn points around each PokeStop",
+    "   park_spawn_multiplier  parks get this many times more spawn points",
+    "   nests ................ true = parks spawn mostly one species, rotating",
+    "                          on a cycle (like the real game's nests)",
+    "   park_nest_share ...... 0..1 share of parks that are nests each cycle",
     "   nest_chance .......... 0..1 chance a spawn in a nest is the nest species",
+    "   region_nests ......... true = also the old whole-region (~3 km) nests",
     "   nest_rotation_days ... how often a nest rotates species (2016 was ~14)",
     "   day_night ............ true = nocturnal Pokemon favour night, day types",
     "                          favour daylight (local time at your longitude)",

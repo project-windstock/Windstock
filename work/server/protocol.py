@@ -4355,10 +4355,11 @@ def _pocket_pool(pool, lat, lng):
     return got
 
 
-def _pick_species(rnd, cfg=None, lat=None, lng=None):
+def _pick_species(rnd, cfg=None, lat=None, lng=None, park=False):
     """Which Pokemon spawns here. Every path (nests, day/night re-rolls, biomes) is
-    checked against 2016 regionals at the end, so a Tauros never leaks into Paris."""
-    pid = _pick_species_any(rnd, cfg, lat, lng)
+    checked against 2016 regionals at the end, so a Tauros never leaks into Paris.
+    park=True: a spawn point of a park stop, which may be a nest."""
+    pid = _pick_species_any(rnd, cfg, lat, lng, park)
     if lat is None or lng is None or _FORCE_POKEMON:
         return pid
     c = cfg or _event_cfg()
@@ -4371,7 +4372,7 @@ def _pick_species(rnd, cfg=None, lat=None, lng=None):
     return 16 if not _regional_ok(pid, lat, lng) else pid   # give up: a Pidgey
 
 
-def _pick_species_any(rnd, cfg=None, lat=None, lng=None):
+def _pick_species_any(rnd, cfg=None, lat=None, lng=None, park=False):
     """Which Pokemon spawns, honouring the event's species mode. In the normal
     'all' mode the spawn is flavoured by the biome at (lat, lng) when we know it,
     so different areas favour different Pokemon the way 2016's biomes did. An
@@ -4394,8 +4395,16 @@ def _pick_species_any(rnd, cfg=None, lat=None, lng=None):
             import biomes as _bio
             allow_leg = _cfg.get("spawns", "allow_legendaries", cast=bool)
             now = int(time.time() * 1000)
-            # NEST: some regions spawn mostly one species (rotates on a cycle).
-            if _cfg.get("spawns", "nests", cast=bool):
+            # NEST: parks spawn mostly one species, rotating on a cycle -- where
+            # the real game put its nests.
+            if park and _cfg.get("spawns", "nests", cast=bool):
+                nest = _bio.park_nest_species(
+                    lat, lng, now, _cfg.get("spawns", "nest_rotation_days", cast=int),
+                    _cfg.get("spawns", "park_nest_share", cast=float))
+                if nest and rnd.random() < _cfg.get("spawns", "nest_chance", cast=float):
+                    return int(nest)
+            # The older model: whole ~3 km regions as nests. Off by default.
+            if _cfg.get("spawns", "region_nests", cast=bool):
                 nest = _bio.nest_species(
                     lat, lng, now, _cfg.get("spawns", "biome_size", cast=int),
                     _cfg.get("spawns", "nest_rotation_days", cast=int))
@@ -4744,6 +4753,23 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
         if d <= _sight_r:
             lst.append(build_nearby_pokemon(pid, d, eid))
 
+    # Spawn points around each stop. Parks get park_spawn_multiplier times as many,
+    # spread over a wider area, because in the real game that is where the spawns
+    # are. Stops further than radius_m from the trainer get none: the per-refresh
+    # cap is small, and spending it on stops half a kilometre away left the ground
+    # under your feet empty.
+    _ps_base = max(0, _cfg.get("spawns", "per_stop", cast=int))
+    _park_mult = max(1, _cfg.get("spawns", "park_spawn_multiplier", cast=int))
+
+    def _stop_points(sf):
+        return _ps_base * (_park_mult if sf.get("park") else 1)
+
+    def _stop_in_range(sf):
+        if not (_radius_m and have_fix):
+            return True
+        return _math.hypot((sf["lat"] - lat) * 111320.0,
+                           (sf["lng"] - lng) * 111320.0 * _coslat) <= _radius_m + 60.0
+
     w = pb.Writer()
     # 2016 timing: pick ONE set of stop spawns for the whole refresh, earliest
     # appearance first, up to the cap. Choosing per stop in map order made spawns
@@ -4754,22 +4780,22 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
     _stops_here = False
     if (_proc_spawns and _cfg.get("spawns", "realistic_2016", cast=bool)
             and _cfg.get("spawns", "hourly_spawn_points", cast=bool)):
-        _ps = max(0, _cfg.get("spawns", "per_stop", cast=int))
         # Crowded areas have far more spawn points than the map cap can show. About
         # a quarter of points are up at any moment, so keep just enough of them that
         # the ones up fit the cap -- then each spawn is visible for its whole 15
         # minutes instead of only once older ones free a slot. Which points survive
         # is fixed per point (by hash), so a spot you've learned stays a spot.
-        _n_points = sum(1 for _c in cells for _sf in _placed_forts.get(_c, [])
-                        if _sf.get("kind") != "gym") * _ps
+        _n_points = sum(_stop_points(_sf) for _c in cells
+                        for _sf in _placed_forts.get(_c, [])
+                        if _sf.get("kind") != "gym" and _stop_in_range(_sf))
         _keep = min(1.0, (0.85 * MAX_WILD * 4.0) / max(1, _n_points))
         _stops_here = _n_points > 0
         _all_up = []
         for _c in cells:
             for _sf in _placed_forts.get(_c, []):
-                if _sf.get("kind") == "gym":
+                if _sf.get("kind") == "gym" or not _stop_in_range(_sf):
                     continue
-                for k in range(_ps):
+                for k in range(_stop_points(_sf)):
                     if ((_stable_hash(_sf["id"]) ^ (k * 0x632BE5AB)) % 10000) / 10000.0 >= _keep:
                         continue                          # thinned out in a crowded area
                     _ploc = _random.Random((_stable_hash(_sf["id"]) ^ (k * 0x2545F491)
@@ -4793,14 +4819,15 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
         # is alive wherever there are stops -- not only around the trainer. Runs BEFORE
         # the random field so stops get first claim on the per-refresh budget; the hard
         # MAX_WILD cap still applies (a dense city fills up across the nearest stops).
-        _per_stop = max(0, _cfg.get("spawns", "per_stop", cast=int))
-        if _proc_spawns and _per_stop:
+        if _proc_spawns and _ps_base:
             for _sf in _placed_forts.get(cid, []):
                 if wild_n >= MAX_WILD and _stop_pick is None:
                     break
-                if _sf.get("kind") == "gym":
+                if _sf.get("kind") == "gym" or not _stop_in_range(_sf):
                     continue
                 _sla, _sln = _sf["lat"], _sf["lng"]
+                _park = bool(_sf.get("park"))
+                _per_stop = _stop_points(_sf)
                 _stimed = (_cfg.get("spawns", "realistic_2016", cast=bool)
                            and _cfg.get("spawns", "hourly_spawn_points", cast=bool))
                 # Gather every spawn that's up around this stop first, then show the
@@ -4813,7 +4840,9 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
                     _ploc = _random.Random((_stable_hash(_sf["id"]) ^ (k * 0x2545F491)
                                             ^ 0x570F5) & 0x7FFFFFFF)
                     ang = 2 * _math.pi * k / _per_stop + _ploc.uniform(-0.4, 0.4)
-                    dist = 15.0 + _ploc.random() * 45.0    # 15-60m: the stop's general area
+                    # 15-60m: the stop's general area; a park's spawns spread
+                    # out over the park instead (15-120m)
+                    dist = 15.0 + _ploc.random() * (105.0 if _park else 45.0)
                     dl = _sla + (dist * _math.cos(ang)) / 111320.0
                     dn = _sln + (dist * _math.sin(ang)) / (
                         111320.0 * max(0.2, _math.cos(_math.radians(_sla))))
@@ -4839,7 +4868,7 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
                            ^ 0x570F5) & ((1 << 62) - 1)
                     if _world.is_despawned(eid):
                         continue
-                    pid = _pick_species(r, _ev, dl, dn)
+                    pid = _pick_species(r, _ev, dl, dn, park=_park)
                     cp = _pick_cp(r, _ev, pid)
                     sid = _hex_id((_sf["id"], "s", k), 11)
                     wild.append(build_wild_pokemon(eid, dl, dn, sid, pid, now,

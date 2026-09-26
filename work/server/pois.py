@@ -6,12 +6,20 @@ and hands the map builder real businesses/parks/churches/etc. as forts. Because
 they sit on actual buildings they are off the road and close enough to spin --
 unlike the procedural cell-centre forts, which can land in the middle of a road.
 
-Same shape as places.forts: {id, lat, lng, kind: "stop"|"gym", name, image}.
+Same shape as places.forts: {id, lat, lng, kind: "stop"|"gym", name, image},
+plus "park": True on the ones that are parks (see is_park).
+
+Which forts are gyms is decided HERE, per level-15 cell, not by the importer:
+each cell gets one gym per gyms.stops_per_gym stops, parks first -- the real game
+puts its gyms in parks. Doing it at read time means the existing osm_forts.json
+and the phone's world packs follow the setting without being rebuilt.
 Hot-reloaded by mtime, so re-running the fetch tool takes effect on the next map
 refresh with no restart.
 """
+import hashlib
 import json
 import os
+import re
 import threading
 
 import datadir
@@ -19,7 +27,102 @@ import datadir
 POIS_FILE = os.path.join(datadir.ensure(), "osm_forts.json")
 
 _lock = threading.RLock()
-_cache = {"mtime": None, "forts": [], "by_cell": None}
+_cache = {"mtime": None, "forts": [], "by_cell": None, "view": None}
+
+# ---- parks -------------------------------------------------------------------
+# The fort files keep a name but not the OSM tags, so a park is recognised by its
+# name. Tuned on the 1.1M-fort US file: ~20k parks, campgrounds, trails and
+# nature areas, without catching "Park Ave Dental", "Olive Garden" or
+# "The Park at Riverside" apartments.
+_PARK_END = re.compile(
+    r"\b(park|parque|parc|playground|arboretum|preserve|reserve|green|commons?|"
+    r"meadows?|woods|forest|greenway|trailhead|trail|campground|"
+    r"recreation (?:area|ground)|picnic area|wildlife area|nature (?:center|centre)|"
+    r"(?:community|botanical|public|rose|memorial|japanese|sculpture) gardens?)\s*$",
+    re.I)
+_PARK_ANY = re.compile(
+    r"\b(?:state|county|city|national|regional|memorial|community|neighbou?rhood|"
+    r"municipal|dog|skate|water|linear) park\b|"
+    r"\b(?:park|playground)\b.*\b(?:entrance|pavilion|shelter|playground|pond|lake|"
+    r"trailhead|picnic|boat (?:launch|ramp)|overlook|trail|loop|fields?|courts?|"
+    r"splash pad|bandstand|gazebo|campground)\b", re.I)
+_NOT_PARK = re.compile(
+    r"\b(?:apartments?|apts|apartment|dental|dentist|pharmacy|clinic|hotel|motel|inn|"
+    r"bank|salon|school|elementary|academy|market|grocery|liquor|auto|motors|plaza|"
+    r"mall|office|offices|realty|insurance|condos?|villas?|townhomes|senior|"
+    r"hospital|medical|restaurant|cafe|bar|pizza|grill|diner|deli|shop|store|tire|"
+    r"garage|storage|homes|estates|lodge|suites|mobile|r\.?v\.?|golf|cemetery|"
+    r"funeral|industrial|business|corporate|tech|research|trailer|residences?|"
+    r"living|the park at|on the park)\b", re.I)
+
+
+def is_park(name):
+    """True if a fort's name reads as a park / green space."""
+    if not name or _NOT_PARK.search(name):
+        return False
+    return bool(_PARK_END.search(name) or _PARK_ANY.search(name))
+
+
+def _h(s):
+    return int(hashlib.md5(str(s).encode()).hexdigest()[:12], 16)
+
+
+def _stops_per_gym():
+    try:
+        import settings as _cfg
+        return max(1, int(_cfg.get("gyms", "stops_per_gym", cast=int)))
+    except Exception:
+        return 5
+
+
+def rebalance(cell_id, bucket, stops_per_gym=None):
+    """The forts of ONE level-15 cell as copies with "kind" and "park" set.
+
+    One fort in every (stops_per_gym + 1) is a gym; the fractional remainder is
+    a stable per-cell coin flip, so a 3-fort cell has a gym half the time and the
+    whole map lands on the ratio. Parks get the gym first, then forts the
+    importer already made gyms (landmarks), then a stable hash -- so the same
+    places stay gyms from one day to the next."""
+    if not bucket:
+        return bucket
+    per = stops_per_gym or _stops_per_gym()
+    out = []
+    for f in sorted(bucket, key=lambda x: x["id"]):
+        g = dict(f)
+        g["park"] = is_park(g.get("name", ""))
+        out.append(g)
+    whole, rem = divmod(len(out), per + 1)
+    want = whole + (1 if (_h(("gymcell", cell_id)) % (per + 1)) < rem else 0)
+    rank = sorted(out, key=lambda g: (not g["park"], g.get("kind") != "gym",
+                                      _h(("gym", g["id"]))))
+    gyms = {g["id"] for g in rank[:want]}
+    for g in out:
+        g["kind"] = "gym" if g["id"] in gyms else "stop"
+    return out
+
+
+class _Balanced:
+    """A {cell_id: [forts]} view that rebalances each cell the first time it is
+    asked for. Doing all 1.1M forts up front cost ~15 s; a map request only
+    ever touches a handful of cells."""
+
+    def __init__(self, inner, per):
+        self._inner, self._per, self._memo = inner, per, {}
+
+    def get(self, cell_id, default=None):
+        hit = self._memo.get(cell_id)
+        if hit is None:
+            hit = rebalance(cell_id, self._inner.get(cell_id) or [], self._per)
+            if len(self._memo) > 20000:
+                self._memo.clear()
+            self._memo[cell_id] = hit
+        return hit if hit else default
+
+    def __bool__(self):
+        return bool(self._inner)
+
+
+_db_view = {"key": None, "view": None}
 
 
 def _use_db():
@@ -85,9 +188,15 @@ def forts_by_cell():
     is one indexed query -- the only way callers use this."""
     if _use_db():
         import worlddb
-        return worlddb.CellIndex()
+        key = (tuple(worlddb.paths()), _stops_per_gym())
+        with _lock:
+            if _db_view["key"] != key:
+                _db_view["key"] = key
+                _db_view["view"] = _Balanced(worlddb.CellIndex(), key[1])
+            return _db_view["view"]
     with _lock:
         forts()                                     # refresh cache if the file changed
+        per = _stops_per_gym()
         if _cache["by_cell"] is None:
             idx = {}
             need_s2 = [f for f in _cache["forts"] if not f.get("cell")]
@@ -112,7 +221,10 @@ def forts_by_cell():
                 except ValueError:
                     continue
             _cache["by_cell"] = idx
-        return _cache["by_cell"]
+        if _cache["view"] is None or _cache["view"]._inner is not _cache["by_cell"] \
+                or _cache["view"]._per != per:
+            _cache["view"] = _Balanced(_cache["by_cell"], per)
+        return _cache["view"]
 
 
 def near(lat, lng):

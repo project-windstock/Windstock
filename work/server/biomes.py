@@ -183,6 +183,24 @@ NEST_SPECIES = [1, 4, 7, 25, 133, 147, 66, 63, 129, 92, 41, 74, 60, 72, 98, 116,
                 43, 46, 48, 27, 21, 16, 19, 39, 37, 58, 88, 100, 104, 109]
 
 
+def park_nest_species(lat, lng, now_ms, rotation_days=14, share=0.67):
+    """The nest species of the PARK at (lat, lng) right now, or 0 if this park
+    isn't a nest this cycle. Like the real game, nests live in parks: every park
+    stop in the same ~600m level-14 cell shares one species (a big park is one
+    nest, not a patchwork), and each cycle about `share` of parks are nests."""
+    try:
+        cid = s2sphere.CellId.from_lat_lng(
+            s2sphere.LatLng.from_degrees(lat, lng)).parent(14).id()
+    except Exception:
+        return 0
+    period = int(now_ms // (max(1, int(rotation_days)) * 86_400_000))
+    roll = _mix(cid ^ (period * 0xD6E8FEB86659FD93) ^ 0x5041524B)
+    if (roll % 1000) >= int(max(0.0, min(1.0, share)) * 1000):
+        return 0
+    idx = _mix(cid ^ (period * 0x9E3779B97F4A7C15) ^ 0x4E455354) % len(NEST_SPECIES)
+    return NEST_SPECIES[idx]
+
+
 def nest_species(lat, lng, now_ms, level=12, rotation_days=14):
     """The nest species for this region right now, or 0 if the region isn't a
     nest. Stable for the whole `rotation_days` window, then it rotates."""
