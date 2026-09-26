@@ -1886,8 +1886,7 @@ def build_fort_details_response(fort_id, lat, lng) -> bytes:
     w.uint(9, 0 if gym else 1)
     w.double(10, lat)
     w.double(11, lng)
-    if gym:                                   # stops get no description; gyms keep theirs
-        w.string(12, "A little piece of home.")
+    # description = 12 is left out: OSM places don't come with one.
     if _mod:
         # On the DETAIL screen the lure is a full message -- FortDetailsOutProto
         # .Modifier = 13, ClientFortModifierProto{ type=1, expires=2, by=3 }.
@@ -3765,8 +3764,7 @@ def build_gym_details_response(fort_id, lat, lng, now_ms) -> bytes:
     w.string(3, _fort_image_url(fort_id))                 # urls = 3, never empty
     return (w
             .uint(4, 1)                                   # SUCCESS
-            .string(5, "A gym in your neighbourhood.")
-            .to_bytes())
+            .to_bytes())                                  # no description (5): OSM has none
 
 
 def parse_deploy(msg):
