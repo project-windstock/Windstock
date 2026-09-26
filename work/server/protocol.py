@@ -3708,6 +3708,16 @@ def build_collect_daily_defender_bonus_response() -> bytes:
 
 
 # --------------------------------------------------------------- GYMS / ITEMS
+def _member_name(m):
+    """A defender's trainer name. names.trainer_color is YOUR colour, so it only goes on
+    your own defenders; NPCs and other players keep plain names (their own [tags] still
+    show)."""
+    import world
+    name = m.get("trainer") or "Trainer"
+    mine = not m.get("npc") and m.get("owner") == getattr(world.current(), "username", None)
+    return colortags.trainer(name) if mine else colortags.expand(name)
+
+
 def build_gym_membership(m) -> bytes:
     """GymMembership { pokemon_data=1, trainer_public_profile=2 }.
     PlayerPublicProfile { name=1, level=2, avatar=3 }. We used to send only the
@@ -3716,7 +3726,7 @@ def build_gym_membership(m) -> bytes:
     import world
     lvl, _ = world.stats()
     profile = (pb.Writer()
-               .string(1, colortags.trainer(m.get("trainer") or "Trainer"))
+               .string(1, _member_name(m))
                .int_(2, lvl)
                .message(3, build_player_avatar())
                .to_bytes())
