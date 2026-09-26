@@ -232,12 +232,17 @@ class Player:
                       "big_magikarp": 0, "small_rattata": 0, "pikachu_caught": 0,
                       "battle_attack_won": 0, "battle_attack_total": 0,
                       "battle_training_won": 0, "battle_training_total": 0,
-                      "battle_defended_won": 0, "pokemon_deployed": 0}
+                      "battle_defended_won": 0, "pokemon_deployed": 0,
+                      # Windstock's own medals (protocol.CUSTOM_BADGES)
+                      "shiny_caught": 0, "night_caught": 0}
         # HoloPokemonType -> how many of that type you've caught (a Pokemon with
         # two types counts for both, as it did in 2016).
         self.CAUGHT_BY_TYPE = {}
         # badge_type -> highest rank we've already shown the award popup for.
         self.BADGES = {}
+        # Pokemon numbers ever caught shiny (the Shinydex medal). Kept apart from
+        # CAUGHT so transferring a shiny doesn't take it off the medal.
+        self.SHINYDEX = set()
         # Look: {avatar, skin, hair, shirt, pants, hat, shoes, eyes, backpack}.
         # Empty = use the defaults from settings.json.
         self.AVATAR = {}
@@ -267,6 +272,7 @@ class Player:
                 "created_ms": self.CREATED_MS,
                 "caught_by_type": {str(k): v for k, v in self.CAUGHT_BY_TYPE.items()},
                 "badges": {str(k): v for k, v in self.BADGES.items()},
+                "shinydex": sorted(self.SHINYDEX),
                 "avatar": self.AVATAR, "avatar_ask": self.AVATAR_ASK,
                 "max_pokemon": self.MAX_POKEMON, "max_items": self.MAX_ITEMS}
 
@@ -393,6 +399,18 @@ class Player:
                 self.BADGES[int(k)] = int(v)
             except (TypeError, ValueError):
                 pass
+        for n in d.get("shinydex") or []:
+            try:
+                self.SHINYDEX.add(int(n))
+            except (TypeError, ValueError):
+                pass
+        # Shinies caught before the shiny medals existed still count: backfill the
+        # total and the Shinydex from the ones still in the collection.
+        if "shinydex" not in d:
+            owned = [c for c in self.CAUGHT if c.get("shiny")]
+            self.SHINYDEX.update(int(c.get("pokemon_id", 0) or 0) for c in owned)
+            self.SHINYDEX.discard(0)
+            self.STATS["shiny_caught"] = max(self.STATS["shiny_caught"], len(owned))
         # Backfill the type tally from the collection, so a save made before
         # medals existed doesn't show every type medal at zero.
         if not self.CAUGHT_BY_TYPE:
@@ -554,7 +572,7 @@ def accounts():
 _FORWARD = {"BAG", "CAUGHT", "CANDY", "STARDUST", "XP", "LEVEL", "COINS", "DELETED", "POKEDEX",
             "EGGS", "INCUBATORS", "HATCHED", "TEAM", "BERRIES", "APPLIED",
             "MAX_POKEMON", "MAX_ITEMS", "CLAIMED_LEVELS", "STATS", "SHINY_CHARM",
-            "CAUGHT_BY_TYPE", "BADGES", "AVATAR", "AVATAR_ASK"}
+            "CAUGHT_BY_TYPE", "BADGES", "SHINYDEX", "AVATAR", "AVATAR_ASK"}
 
 
 def __getattr__(name):
@@ -957,6 +975,20 @@ def bump_type(pokemon_id):
         for t in protocol.pokemon_types(pokemon_id):
             p.CAUGHT_BY_TYPE[t] = p.CAUGHT_BY_TYPE.get(t, 0) + 1
     p.save()
+
+
+def record_shiny_catch(pokemon_id):
+    """A shiny was caught: Shiny Hunter +1, and its species joins the Shinydex."""
+    p = current()
+    with _lock:
+        p.STATS["shiny_caught"] += 1
+        p.SHINYDEX.add(int(pokemon_id))
+    p.save()
+
+
+def shinydex_count():
+    with _lock:
+        return len(current().SHINYDEX)
 
 
 def caught_by_type():
@@ -1394,27 +1426,42 @@ def xp_multiplier():
     return 2 if item_active(301) else 1
 
 
-# Shiny Incense rides the same APPLIED list as the Lucky Egg / Incense, under an
-# id the 2016 client knows nothing about. It is deliberately NOT a bag item: the
-# client draws the bag from its own bundled item art, so a made-up item id would
-# sit there as a blank tile. Bought from the shop, it goes straight to APPLIED.
+# The shiny pair are BAG items (2026-09-25): two Items the 2016 game never used,
+# renamed and given their icons in the patched client (tools/patch_badges.py).
+#   Shiny Charm   = ITEM_X_MIRACLE (604): works while it's in the bag, like a key item.
+#   Shiny Incense = ITEM_INCENSE_SPICY (402): used from the bag like Incense; it then
+#                   burns in APPLIED as 402, so the client shows it as an active incense.
+# SHINY_INCENSE_ITEM (9401) is the old server-only burn, still honoured for saves
+# that bought one before this.
+SHINY_CHARM_ITEM = 604
+SHINY_INCENSE_BAG_ITEM = 402
 SHINY_INCENSE_ITEM = 9401
 
 
 def has_shiny_charm():
-    return bool(current().SHINY_CHARM)
+    """The charm in the bag -- or bought before it was a bag item (SHINY_CHARM)."""
+    p = current()
+    with _lock:
+        return bool(p.SHINY_CHARM) or p.BAG.get(SHINY_CHARM_ITEM, 0) > 0
 
 
 def grant_shiny_charm():
-    """(ok, message). The charm is permanent, so buying a second one is refused
+    """(ok, message). Into the bag; one is all you need, so a second is refused
     rather than silently taking the coins."""
-    p = current()
-    with _lock:
-        if p.SHINY_CHARM:
-            return False, "You already have the Shiny Charm."
-        p.SHINY_CHARM = True
-    p.save()
-    return True, "The Shiny Charm is yours. It works automatically, forever."
+    if has_shiny_charm():
+        return False, "You already have the Shiny Charm."
+    if room_in_bag() < 1:
+        return False, "Your bag is full."
+    add_item(SHINY_CHARM_ITEM, 1)
+    return True, "The Shiny Charm is in your bag. It works while you carry it."
+
+
+def grant_shiny_incense():
+    """(ok, message). A Shiny Incense into the bag -- use it from there."""
+    if room_in_bag() < 1:
+        return False, "Your bag is full."
+    n = add_item(SHINY_INCENSE_BAG_ITEM, 1)
+    return True, f"Shiny Incense added to your bag (you have {n})."
 
 
 def start_shiny_incense(minutes):
@@ -1442,7 +1489,7 @@ def client_applied_items():
 def shiny_incense_ms_left():
     now = int(time.time() * 1000)
     return max(0, max([a["expires_ms"] for a in applied_items()
-                       if a["item"] == SHINY_INCENSE_ITEM] or [0]) - now)
+                       if a["item"] in (SHINY_INCENSE_ITEM, SHINY_INCENSE_BAG_ITEM)] or [0]) - now)
 
 
 def save_lures():
@@ -2140,6 +2187,7 @@ def deploy(fort_id, uid, trainer=None, team=None):
             return False, "gym full"
         members.append({"uid": uid, "pokemon_id": c["pokemon_id"], "cp": c["cp"],
                         "trainer": trainer, "team": team, "owner": p.username,
+                        "shiny": bool(c.get("shiny")),      # drawn shiny at the gym
                         # A defender walks in with the health it has, and keeps
                         # whatever an attacker knocks off it (see set_gym_hp).
                         "stamina": c.get("stamina"),

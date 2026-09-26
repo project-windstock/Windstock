@@ -31,7 +31,12 @@ GIVEABLE = [(1, "Poke Ball"), (2, "Great Ball"), (3, "Ultra Ball"),
             (101, "Potion"), (102, "Super Potion"), (103, "Hyper Potion"),
             (104, "Max Potion"), (201, "Revive"), (202, "Max Revive"),
             (701, "Razz Berry"), (401, "Incense"), (301, "Lucky Egg"),
-            (501, "Lure Module"), (902, "Egg Incubator")]
+            (501, "Lure Module"), (902, "Egg Incubator"),
+            # the shiny pair are bag items now (world.SHINY_CHARM_ITEM / _INCENSE_BAG_ITEM)
+            (402, "Shiny Incense"), (604, "Shiny Charm")]
+# Eggs sit in the same dropdown ("egg:<km>"), but go to the egg bag
+# (world.give_egg), not the item bag.
+GIVEABLE_EGGS = [("egg:2", "2 km Egg"), ("egg:5", "5 km Egg"), ("egg:10", "10 km Egg")]
 
 # Kanto species names for the picker (index 0 unused)
 DEX = [""] + """Bulbasaur Ivysaur Venusaur Charmander Charmeleon Charizard Squirtle Wartortle
@@ -574,8 +579,14 @@ function giveResult(r){
   load();
 }
 async function give(){
+  const v=$('giveitem').value;
+  if(v.startsWith('egg:')){                 // eggs go to the egg bag
+    const km=v.split(':')[1];
+    return giveResult(await post('/api/give',{player:$('giveuser').value,
+      kind:'egg', km:+km, count:+$('giveqty').value}));
+  }
   giveResult(await post('/api/give',{player:$('giveuser').value,
-    kind:'item', item_id:+$('giveitem').value, count:+$('giveqty').value}));
+    kind:'item', item_id:+v, count:+$('giveqty').value}));
 }
 async function giveCandy(){
   giveResult(await post('/api/give',{player:$('giveuser').value,
@@ -687,6 +698,10 @@ async function togProc(what){
 }
 (__GIVEABLE__).forEach(([id,label])=>{const o=document.createElement('option');
   o.value=id;o.textContent=label;$('giveitem').appendChild(o);});
+{const g=document.createElement('optgroup');g.label='Eggs';
+ (__GIVEABLE_EGGS__).forEach(([id,label])=>{const o=document.createElement('option');
+   o.value=id;o.textContent=label;g.appendChild(o);});
+ $('giveitem').appendChild(g);}
 DEX.forEach((n,i)=>{if(i){const o=document.createElement('option');o.value=i;
   o.textContent=n+' candy';$('givecandy').appendChild(o);}});
 $('givecandy').value=25;
@@ -858,6 +873,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(200, "text/html; charset=utf-8",
                               webui.render(PAGE)
                                   .replace("__DEX__", json.dumps(DEX))
+                                  .replace("__GIVEABLE_EGGS__", json.dumps(GIVEABLE_EGGS))
                                   .replace("__GIVEABLE__", json.dumps(GIVEABLE)))
 
         if p == "/research":
@@ -1022,6 +1038,23 @@ class _Handler(BaseHTTPRequestHandler):
                             p_.LEVEL = world.level_for_xp(floor)
                             p_.save()
                             msg = f"{target} is now level {p_.LEVEL} ({floor} XP)"
+                        elif kind == "egg":
+                            km = float(d.get("km", 2))
+                            if km not in (2.0, 5.0, 10.0):
+                                return self._json({"ok": False,
+                                                   "message": "eggs are 2, 5 or 10 km"})
+                            want = max(1, min(9, int(d.get("count", 1))))
+                            got = 0
+                            while got < want and world.give_egg(km):
+                                got += 1
+                            kind_s = f"{int(km)} km egg"
+                            if not got:
+                                return self._json({"ok": False,
+                                                   "message": f"{target}'s egg bag is full"})
+                            msg = (f"gave {target} {got} \u00d7 {kind_s}{'s' if got != 1 else ''}"
+                                   f" ({len(world.eggs())} eggs now)")
+                            if got < want:
+                                msg += f" -- the egg bag filled up after {got}"
                         elif kind == "stardust":
                             cnt = max(1, min(999999, int(d.get("count", 1))))
                             total = world.add_stardust(cnt)

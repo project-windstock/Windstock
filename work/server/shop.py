@@ -49,12 +49,13 @@ CATALOGUE = [
     ("shinyincense.1",          "Shiny Incense",         0,   1,  180, "shinyincense",0),
 ]
 
-# Ported from Kanto, which sells the same two. They are WEB-SHOP ONLY: the SKU is
-# what the in-game store matches its bundled sprite against, and the 2016 store
-# never sold these, so in the native shop they would be blank tiles. The web page
-# draws its own art, so that is where they live. purchase() still honours the SKU
-# if one ever comes back from the client.
+# Ported from Kanto, which sells the same two. The SKU is what the in-game store
+# matches its bundled sprite (and "<sku>_title" name) against, and the 2016 store
+# never sold these -- so on a stock client they'd be blank tiles, and they are
+# web-shop only. The iOS client is patched (tools/patch_badges.py adds their art
+# and names to the game data), so there they are in the in-game store too.
 WEB_ONLY = {"shinycharm.1", "shinyincense.1"}
+PATCHED_PLATFORMS = {"ios"}
 
 # Item art is the REAL 2016 texture, pulled out of the APK's Unity assets
 # (sharedassets0 -> Texture2D "Item_0001" etc, which are named by item id) and
@@ -112,15 +113,15 @@ def grant_special(sku, price):
     if sku not in ("shinycharm.1", "shinyincense.1"):
         ok, message, _new = world.buy_storage(_storage_kind(sku))
         return ok, message
-    if sku == "shinycharm.1":
-        if world.has_shiny_charm():
-            return False, "You already have the Shiny Charm."
-    elif world.shiny_incense_ms_left() > 0:
-        return False, "A Shiny Incense is already burning."
+    # Both go into the bag now (world.grant_*): checked before the coins are taken.
+    if sku == "shinycharm.1" and world.has_shiny_charm():
+        return False, "You already have the Shiny Charm."
+    if world.room_in_bag() < 1:
+        return False, "Your bag is full."
     if not world.spend_coins(price):
         return False, f"You need {price} Pok\u00e9Coins."
     ok, message = (world.grant_shiny_charm() if sku == "shinycharm.1" else
-                   world.start_shiny_incense(_cfg.get("shiny", "incense_minutes", cast=float)))
+                   world.grant_shiny_incense())
     if not ok:
         world.add_coins(price)                     # lost a race; nothing granted
     return ok, message
@@ -149,7 +150,17 @@ _ITEM_TYPE_NAME = {1: "ITEM_POKE_BALL", 301: "ITEM_LUCKY_EGG",
                    401: "ITEM_INCENSE_ORDINARY", 501: "ITEM_TROY_DISK",
                    901: "ITEM_INCUBATOR_BASIC_UNLIMITED", 902: "ITEM_INCUBATOR_BASIC",
                    1001: "ITEM_POKEMON_STORAGE_UPGRADE",
-                   1002: "ITEM_ITEM_STORAGE_UPGRADE"}
+                   1002: "ITEM_ITEM_STORAGE_UPGRADE",
+                   402: "ITEM_INCENSE_SPICY", 604: "ITEM_X_MIRACLE"}
+
+# The shiny pair are bag items -- Items the 2016 game never uses, Spicy Incense (402)
+# and X Miracle (604), which the patched client renames and gives the right icon
+# (tools/patch_badges.py) -- but they stay iid 0 in CATALOGUE so purchase() routes
+# them through grant_special() (one charm only, bag-space check). The listing names
+# that Item, so the "you got..." popup reads "Shiny Charm" / "Shiny Incense" (it said
+# item_unknown_name with ITEM_UNKNOWN). The inventory always reports both, 0 included.
+_DISPLAY_ITEM = {"shinyincense.1": 402, "shinycharm.1": 604}
+DISPLAY_ITEMS = tuple(_DISPLAY_ITEM.values())
 
 
 def shop_price(price):
@@ -173,7 +184,7 @@ def _store_item_bytes(sku, iid, cnt, price, sort):
     def _tag(key, value):
         return pb.Writer().string(1, key).string(2, value).to_bytes()
 
-    item_id = _STORAGE_ITEM.get(sku, iid)
+    item_id = _STORAGE_ITEM.get(sku) or _DISPLAY_ITEM.get(sku, iid)
     # A storage upgrade is "1 upgrade item"; the +50 comes from the item
     # template's additional_storage. Sending the 50 here (as if it were a
     # stack of 50 upgrade items) breaks the client's tile formatting so its
@@ -189,13 +200,17 @@ def _store_item_bytes(sku, iid, cnt, price, sort):
     return w.to_bytes()
 
 
-def build_platform_shop(coins, stardust):
+def build_platform_shop(coins, stardust, platform="android"):
     """Bytes of the Unknown6Response(response_type=5) that fills the in-game Shop
     screen, priced in PokeCoins, ending with the player's live currencies."""
     import pb
 
     inner = pb.Writer().uint(1, 1)                        # unknown1 = 1 (success)
-    for sort, entry in enumerate([e for e in CATALOGUE if e[0] not in WEB_ONLY], 1):
+    import settings as _cfg
+    patched = platform in PATCHED_PLATFORMS or (
+        platform == "android" and _cfg.get("shop", "patched_android", cast=bool))
+    hidden = set() if patched else WEB_ONLY
+    for sort, entry in enumerate([e for e in CATALOGUE if e[0] not in hidden], 1):
         sku, _label, iid, cnt, price, _icon, _was = entry
         inner.message(2, _store_item_bytes(sku, iid, cnt, shop_price(price), sort))
     inner.message(3, _currency("POKECOIN", coins))        # player_currencies

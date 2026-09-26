@@ -21,7 +21,10 @@ bag item -- see world.SHINY_INCENSE_ITEM for why.
 Tweak API (game host, trainer recognised by phone IP like the raid/weather screens):
   GET /shiny/state -> {"species": [25], "encounter": {"eid","pokemon_id","shiny"} | null,
                        "shiny_uids": ["123", ...], "charm": bool, "incense_ms": int,
-                       "rate": float}
+                       "rate": float,
+                       "gym": {"id", "shiny_pids": [..], "battle": {"atk_pid", "atk_shiny",
+                               "def_pid", "def_shiny"} | null} | null,
+                       "map": {"guards": {"<fort id>": pid}} | null}
 """
 import json
 import re
@@ -86,6 +89,17 @@ def effective_rate():
     return max(0.0, min(1.0, rate))
 
 
+def set_rate(encounter_id, rate):
+    """Pin one spawn's shiny chance (a Shiny Incense's own Pokemon: incense_spawn_rate),
+    instead of the account-wide effective_rate(). Same fixed roll as every other spawn."""
+    try:
+        eid = int(encounter_id)
+    except (TypeError, ValueError):
+        return
+    with _lock:
+        _JUDGED[eid] = (max(0.0, min(1.0, float(rate))), time.time())
+
+
 def is_shiny(encounter_id, pokemon_id):
     """Fixed per spawn: the same encounter id always gives the same answer."""
     if not _cfg.get("shiny", "enabled", cast=bool):
@@ -133,6 +147,70 @@ def current_encounter(username):
         return dict(e) if e else None
 
 
+def member_shiny(m):
+    """Is this gym defender shiny? Your own Pokemon keep the shine they were caught
+    with (copied onto the member when deployed; looked up for older members). A
+    rival (NPC) defender gets ONE fixed roll from its uid at the base rate, like a
+    wild spawn -- the same gym shows the same shiny every time."""
+    if m.get("shiny") is not None:
+        return bool(m["shiny"])
+    if m.get("npc") or m.get("raid"):
+        uid = int(m.get("uid") or 0)
+        with _lock:
+            if uid not in _JUDGED:
+                _JUDGED[uid] = (max(0.0, min(1.0, _cfg.get("shiny", "rate", cast=float))),
+                                time.time())
+        return is_shiny(uid, m.get("pokemon_id"))
+    try:
+        import world
+        return bool((world.get_caught(m["uid"]) or {}).get("shiny"))
+    except Exception:
+        return False
+
+
+def gym_state(user):
+    """What the tweak needs to draw a gym's shinies: which defender species at the
+    gym this trainer has open are shiny, and -- mid-battle -- whether the two
+    Pokemon fighting are."""
+    import rpc
+    import world
+    gid = rpc.gym_for_user(user)
+    if not gid:
+        return None
+    out = {"id": gid, "shiny_pids": sorted({int(m["pokemon_id"]) for m in world.gym_members(gid)
+                                             if member_shiny(m)}), "battle": None}
+    live = [b for b in world.BATTLES.values()
+            if b.get("gym") == gid and b.get("player") == user and not b.get("finished")]
+    if live:
+        b = max(live, key=lambda b: b.get("start", 0))
+        dm = next((m for m in world.gym_members(gid) if m["uid"] == b["defender"]), None)
+        out["battle"] = {"atk_pid": b["atk_pid"],
+                         "atk_shiny": bool((world.get_caught(b["attacker"]) or {}).get("shiny")),
+                         "def_pid": b["def_pid"],
+                         "def_shiny": bool(dm and member_shiny(dm))}
+    return out
+
+
+def map_state(user):
+    """Shinies to draw on the MAP: for every gym the map was sent recently, the
+    species on top when that guard is shiny. (Wild Pokemon stay normal on the map
+    by design -- a shiny only shows once you tap it.)"""
+    import protocol as P
+    import world
+    guards = {}
+    now = time.time()
+    for fid, t in list(P._SEEN_GYMS.items()):
+        if now - t > 900:
+            P._SEEN_GYMS.pop(fid, None)
+            continue
+        ms = world.gym_members(fid)
+        if ms:
+            best = max(ms, key=lambda m: m.get("cp", 0))    # the one on top (world.gym_guard)
+            if member_shiny(best):
+                guards[fid] = int(best["pokemon_id"])
+    return {"guards": guards}
+
+
 def handle(method, path, query, headers, body, log, ip=None):
     import rpc
     import world
@@ -141,11 +219,19 @@ def handle(method, path, query, headers, body, log, ip=None):
     if user:
         enc = current_encounter(user)
         if enc:
-            out["encounter"] = {k: enc[k] for k in ("eid", "pokemon_id", "shiny")}
+            out["encounter"] = {k: enc.get(k) for k in ("eid", "pokemon_id", "shiny")}
         world.use(user)
         out["shiny_uids"] = [str(c["uid"]) for c in world.caught() if c.get("shiny")]
         out["charm"] = world.has_shiny_charm()
         out["incense_ms"] = world.shiny_incense_ms_left()
         out["rate"] = effective_rate()
+        try:
+            out["gym"] = gym_state(user)
+        except Exception:
+            out["gym"] = None
+        try:
+            out["map"] = map_state(user)
+        except Exception:
+            out["map"] = None
     return 200, {"Content-Type": "application/json", "Cache-Control": "no-store"}, \
         json.dumps(out).encode("utf-8")

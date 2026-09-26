@@ -508,8 +508,14 @@ def build_get_inventory_response(since_ms=0) -> bytes:
     # deltas the client keeps its cached counts, so an item used up to 0 (or an
     # incubator moved out of the bag) must be sent as count 0 or its old number
     # stays on screen. Real 2016 servers sent zero-count items the same way.
+    _held = set()
     for iid, cnt in world.bag_items(include_empty=True):
         items.append(_inventory_item(2, build_bag_item(iid, cnt), now))
+        _held.add(int(iid))
+    import shop as _shop                          # the shiny items' display-only Items:
+    for iid in _shop.DISPLAY_ITEMS:               # always 0, so none lingers in the bag
+        if iid not in _held:
+            items.append(_inventory_item(2, build_bag_item(iid, 0), now))
     # Incubators live in world.INCUBATORS (the egg_incubators list is what eggs
     # go into), but the BAG screen reads ordinary item entries -- real 2016
     # inventories carried both. So mirror each type's count here as well.
@@ -579,7 +585,13 @@ ASSET_TS = 1_470_600_000_000        # both must be NON-zero or config-version fa
                                     #  asset digest after we change bundle entries;
                                     #  bumped when we swapped the fake egg for the real
                                     #  151-bundle digest w/ genuine keys, 2026-08-02)
-TEMPLATES_TS = 1_474_300_000_000    # bumped 2026-08-16: swapped our home-CONVERTED
+TEMPLATES_TS = 1_474_600_000_000    # bumped 2026-09-25 (2nd): the phone had cached 1_474_500 WITHOUT
+                                    # ITEM_INCENSE_SPICY (154,314 bytes vs 154,358 now), so tapping
+                                    # Shiny Incense -> Use did nothing. ANY template change needs a bump.
+                                    # (was 1_474_500_000_000: + ITEM_INCENSE_SPICY (Shiny Incense).
+                                    # (was 1_474_400_000_000, bumped 2026-09-24: the game master now carries
+                                    # our custom medals' BadgeSettings (CUSTOM_BADGES).
+                                    # (was 1_474_300_000_000, bumped 2026-08-16: swapped our home-CONVERTED
                                     # master for the AUTHENTIC 2016 game_master (the
                                     # converter differed on 278 templates incl.
                                     # camera_encounterintro + BATTLE_SETTINGS, which
@@ -1322,12 +1334,26 @@ def build_use_item_xp_boost_response(item_id) -> bytes:
     return w.to_bytes()
 
 
+def parse_use_incense(msg):
+    """UseIncenseActionProto { incense_type=1 (Item) }. 401 when absent."""
+    try:
+        return pb.get(pb.decode(msg), 1, pb.WT_VARINT) or ITEM_INCENSE
+    except Exception:
+        return ITEM_INCENSE
+
+
 def build_use_incense_response(item_id) -> bytes:
     """UseIncenseActionOutProto { result=1, applied_incense=2 }.
-    1=SUCCESS 2=ALREADY_ACTIVE 3=NONE_IN_INVENTORY."""
+    1=SUCCESS 2=ALREADY_ACTIVE 3=NONE_IN_INVENTORY.
+    item_id 402 is the Shiny Incense (world.SHINY_INCENSE_BAG_ITEM): it burns for
+    shiny.incense_minutes and boosts the shiny rate while it does."""
     import world
-    mins = _cfg.get("boosts", "incense_minutes", cast=float)
-    code, entry = world.apply_item(ITEM_INCENSE, mins)
+    if int(item_id) == world.SHINY_INCENSE_BAG_ITEM:
+        mins = _cfg.get("shiny", "incense_minutes", cast=float)
+        code, entry = world.apply_item(world.SHINY_INCENSE_BAG_ITEM, mins)
+    else:
+        mins = _cfg.get("boosts", "incense_minutes", cast=float)
+        code, entry = world.apply_item(ITEM_INCENSE, mins)
     w = pb.Writer().uint(1, code)
     if code == 1 and entry:
         w.message(2, _applied_item(entry))
@@ -1735,6 +1761,9 @@ def build_wild_pokemon(encounter_id, lat, lng, spawn_id, pokemon_id, now_ms,
             .to_bytes())
 
 
+_SEEN_GYMS = {}          # fort_id -> when a map response last carried this gym
+
+
 def build_fort(fort_id, lat, lng, now_ms, is_gym=False) -> bytes:
     # FortData { id=1, last_modified_ts=2, latitude=3, longitude=4,
     #   owned_by_team=5, guard_pokemon_id=6, guard_pokemon_cp=7, enabled=8,
@@ -1759,6 +1788,7 @@ def build_fort(fort_id, lat, lng, now_ms, is_gym=False) -> bytes:
             w.uint(12, int(_m["item"]))
     if is_gym:
         import world
+        _SEEN_GYMS[fort_id] = time.time()    # the tweak draws a shiny guard on these
         guard = world.gym_guard(fort_id)
         # A gym with defenders flies your team's colour; an empty one goes back to
         # NEUTRAL (white/unclaimed). Sending TEAM here unconditionally was a guess
@@ -2127,10 +2157,14 @@ def build_encounter_response(encounter_id, now_ms) -> bytes:
             .to_bytes())
 
 
-def _score_medals(pokemon_id, uid):
+def _score_medals(pokemon_id, uid, shiny=False, night=False):
     """Everything a catch counts towards on the Medals page: the 18 type medals,
-    the two size medals, and Pikachu Fan."""
+    the two size medals, Pikachu Fan, and our Shiny Hunter / Night Owl / Shinydex."""
     import world
+    if shiny:
+        world.record_shiny_catch(pokemon_id)
+    if night:
+        world.bump("night_caught")
     world.bump_type(pokemon_id)
     _h, w_kg = pokemon_size(pokemon_id, uid)
     if pokemon_id == 129 and is_xl(pokemon_id, w_kg):        # Magikarp
@@ -2201,7 +2235,8 @@ def build_catch_pokemon_response(encounter_id, pokeball, hit, now_ms,
     world.add_caught(uid, s["pokemon_id"], s["cp"], pokeball=int(pokeball),
                      cell=int(_cell), **_extra)
     world.pokedex_caught(s["pokemon_id"])
-    _score_medals(s["pokemon_id"], uid)
+    _score_medals(s["pokemon_id"], uid, shiny=bool(_extra),
+                  night=is_night_owl_catch(now_ms, s["lng"]))
     world.remove_spawn(encounter_id)                      # it's ours now; clear the map
     world.drop_bonus_spawn(world.current().username, encounter_id)
     # ...and keep it gone. Spawns are regenerated deterministically per window, so
@@ -2484,6 +2519,56 @@ BADGE_TYPE_FIRST = 18        # BADGE_TYPE_NORMAL; the 18 type medals run 18..35
 BADGE_SMALL_RATTATA = 36
 BADGE_PIKACHU = 37
 
+# Windstock's own medals. The 2016 client has no enum names for these, but a
+# HoloBadgeType is just an int on the wire and everything about a medal is data:
+# the art, title and description are added to the game files by
+# tools/patch_badges.py (keep the two lists in step), and the targets below are
+# served in the game master next to Niantic's (the medal-earned popup reads
+# them from there). An unpatched client shows these with the generic Poke Ball
+# medal and a raw text key -- harmless, just unlabelled.
+BADGE_SHINY_HUNTER = 38      # shinies caught
+BADGE_NIGHT_OWL = 39         # Pokemon caught 7 PM - 6 AM (local)
+BADGE_SHINYDEX = 40          # different shiny species caught
+CUSTOM_BADGES = {            # badge_type -> (template id, [bronze, silver, gold])
+    BADGE_SHINY_HUNTER: ("BADGE_SHINY_HUNTER", [1, 10, 50]),
+    BADGE_NIGHT_OWL: ("BADGE_NIGHT_OWL", [10, 100, 1000]),
+    BADGE_SHINYDEX: ("BADGE_SHINYDEX", [5, 25, 100]),
+}
+NIGHT_OWL_HOURS = (19, 6)    # [start, end) local time; matches the medal text
+
+
+def is_night_owl_catch(now_ms, lng):
+    """Local time at the Pokemon's longitude (15 deg per hour, like biomes.is_night),
+    so it doesn't depend on the server's timezone."""
+    t = time.gmtime(now_ms / 1000.0)
+    h = (t.tm_hour + t.tm_min / 60.0 + float(lng or 0.0) / 15.0) % 24.0
+    start, end = NIGHT_OWL_HOURS
+    return h >= start or h < end
+
+
+def build_shiny_item_templates():
+    """ItemTemplate for the Shiny Incense's Item (402): the 2016 master has no template
+    for it, and without one the client won't offer "Use". A copy of ITEM_INCENSE_ORDINARY's
+    ItemSettings (field 3) with item_id 402; the lifetime shown is shiny.incense_minutes.
+    The Shiny Charm's Item (604, X Miracle) already has a template."""
+    mins = int(_cfg.get("shiny", "incense_minutes", cast=float) * 60)
+    inc = (pb.Writer().uint(1, mins).uint(4, 300).uint(5, 60).uint(6, 200).to_bytes())
+    settings = (pb.Writer().uint(1, 402).uint(2, 10).uint(3, 9)   # item_id, INCENSE type/cat
+                .message(13, inc).to_bytes())
+    return [pb.Writer().string(1, "ITEM_INCENSE_SPICY").message(3, settings).to_bytes()]
+
+
+def build_custom_badge_templates():
+    """ItemTemplate { template_id=1, badge_settings=10 { badge_type=1,
+    badge_ranks=2, targets=3 packed } } for each custom medal -- the same shape as
+    Niantic's BADGE_* templates."""
+    out = []
+    for bt, (tid, targets) in sorted(CUSTOM_BADGES.items()):
+        bs = (pb.Writer().uint(1, bt).uint(2, len(targets) + 1)
+              .packed_varints(3, targets).to_bytes())
+        out.append(pb.Writer().string(1, tid).message(10, bs).to_bytes())
+    return out
+
 # HoloBadgeType for a type medal = BADGE_TYPE_FIRST + (HoloPokemonType - 1),
 # which holds for all 18: NORMAL(1)->18 ... FAIRY(18)->35.
 def _type_badge(pokemon_type):
@@ -2515,6 +2600,8 @@ def _badge_targets():
                     table[bt] = _unpack_varints(raw)
         except Exception:
             pass
+        for bt, (_tid, targets) in CUSTOM_BADGES.items():
+            table[bt] = list(targets)
         _BADGE_TARGETS = table
     return _BADGE_TARGETS
 
@@ -2552,6 +2639,9 @@ def _badge_values():
         BADGE_BATTLE_TRAINING_WON: st.get("battle_training_won", 0),
         BADGE_SMALL_RATTATA: st.get("small_rattata", 0),
         BADGE_PIKACHU: st.get("pikachu_caught", 0),
+        BADGE_SHINY_HUNTER: st.get("shiny_caught", 0),
+        BADGE_NIGHT_OWL: st.get("night_caught", 0),
+        BADGE_SHINYDEX: world.shinydex_count(),
     }
     for ptype, n in by_type.items():
         vals[_type_badge(ptype)] = n
@@ -2638,6 +2728,8 @@ _BADGE_NAMES = {
     BADGE_BIG_MAGIKARP: "Fisherman", BADGE_BATTLE_ATTACK_WON: "Battle Girl",
     BADGE_BATTLE_TRAINING_WON: "Ace Trainer", BADGE_SMALL_RATTATA: "Youngster",
     BADGE_PIKACHU: "Pikachu Fan",
+    BADGE_SHINY_HUNTER: "Shiny Hunter", BADGE_NIGHT_OWL: "Night Owl",
+    BADGE_SHINYDEX: "Shinydex",
     18: "Schoolkid", 19: "Black Belt", 20: "Bird Keeper", 21: "Punk Girl",
     22: "Ruin Maniac", 23: "Hiker", 24: "Bug Catcher", 25: "Hex Maniac",
     26: "Depot Agent", 27: "Kindler", 28: "Swimmer", 29: "Gardener",
@@ -2779,6 +2871,7 @@ BT_NORMAL, BT_TRAINING = 1, 2
 # gym battle (flee); handling it lets the fight end cleanly instead of leaving
 # a stale battle behind.
 BA_ATTACK, BA_DODGE, BA_SPECIAL, BA_FAINT = 1, 2, 3, 5
+BA_SWAP = 4                   # SWAP_POKEMON: next team member in (or a manual swap)
 BA_PLAYER_JOIN, BA_QUIT, BA_VICTORY, BA_DEFEAT = 6, 7, 8, 9
 
 
@@ -2798,15 +2891,26 @@ def _battle_pokemon_info(pokemon_id, uid, cp, hp, energy=0, extra=None,
             .to_bytes())
 
 
-def _battle_participant(pokemon_id, uid, cp, hp, trainer, level, hp_max=None) -> bytes:
+def _battle_participant(pokemon_id, uid, cp, hp, trainer, level, hp_max=None,
+                        reserve=(), active=True) -> bytes:
     """BattleParticipant { active_pokemon=1, trainer_public_profile=2,
-    reverse_pokemon=3, defeated_pokemon=4 }."""
+    reserve_pokemon=3, defeated_pokemon=4 }.
+
+    `reserve` is the rest of the attacking team (BattlePokemonInfo bytes). The
+    client builds your side of the battle from this -- active + reserve -- and it
+    can only swap to a Pokemon that is in that list: with only the active one
+    listed, a faint left nothing to swap to and the battle screen just sat there.
+    active=False leaves active_pokemon out, which is how a DEFEAT's results tell
+    the client there is nobody left to send into a next battle."""
     profile = (pb.Writer().string(1, trainer).int_(2, level)
                .message(3, build_player_avatar()).to_bytes())
-    return (pb.Writer()
-            .message(1, _battle_pokemon_info(pokemon_id, uid, cp, hp, hp_max=hp_max))
-            .message(2, profile)
-            .to_bytes())
+    w = pb.Writer()
+    if active:
+        w.message(1, _battle_pokemon_info(pokemon_id, uid, cp, hp, hp_max=hp_max))
+    w.message(2, profile)
+    for r in reserve:
+        w.message(3, r)
+    return w.to_bytes()
 
 
 def _hp_for(cp, pokemon_id=None, uid=None):
@@ -2901,6 +3005,53 @@ def parse_start_gym_battle(msg):
             attackers, pb.get(f, 3, pb.WT_VARINT) or pb.get(f, 3, pb.WT_64) or 0)
 
 
+# A gym RUN is one trip through a gym's defenders. The client fights them as a
+# chain of separate battles -- each defender is its own START_GYM_BATTLE, and a
+# VICTORY carrying BattleResults.next_defender_pokemon_id is what makes it ask for
+# the next one (read from the 0.29/0.35 client: GymBattleState.ObserveBattleFrames
+# -> RequestNextBattleWhenReady). The run remembers who has fallen and which of
+# your team is still standing across those battles. Keyed (trainer, gym).
+_RUNS = {}
+_RUN_IDLE_MS = 180_000
+# Where each gym is, from GET_GYM_DETAILS: BattleResults carry a full GymState,
+# whose FortData must keep the gym where the map has it.
+_GYM_POS = {}
+
+
+def _gym_state_bytes(gym_id, now_ms) -> bytes:
+    """GymState { fort_data=1, memberships=2 } as it stands right now."""
+    import world
+    lat, lng = _GYM_POS.get(gym_id, (0.0, 0.0))
+    if not (lat or lng):
+        try:
+            import rpc as _rpc
+            lat, lng = _rpc._last_loc[0], _rpc._last_loc[1]
+        except Exception:
+            pass
+    gs = pb.Writer().message(1, build_fort(gym_id, lat, lng, now_ms, is_gym=True))
+    for m in world.gym_members(gym_id):
+        gs.message(2, build_gym_membership(m))
+    return gs.to_bytes()
+
+
+def _team_reserve(team, active_uid, defender_uid=None, fresh=False):
+    """BattlePokemonInfo for every other still-standing member of the team.
+    fresh=True (training) reports everyone at full health."""
+    import world
+    out = []
+    for u in team:
+        if u == active_uid:
+            continue
+        c = world.get_caught(u)
+        if not c or current_hp(c) <= 0 or c["uid"] == defender_uid or world.is_deployed(u):
+            continue
+        cmax = _hp_for(c["cp"], c["pokemon_id"], c["uid"])
+        out.append(_battle_pokemon_info(c["pokemon_id"], c["uid"], c["cp"],
+                                        cmax if fresh else min(current_hp(c), cmax),
+                                        hp_max=cmax))
+    return out
+
+
 def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms) -> bytes:
     """StartGymBattleResponse { result=1, battle_start_timestamp_ms=2,
     battle_end_timestamp_ms=3, battle_id=4, defender=5, battle_log=6 }.
@@ -2920,8 +3071,20 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
                 and c["uid"] != defender["uid"]
                 and not world.is_deployed(c["uid"]))
 
-    atk = next((c for c in (world.get_caught(u) for u in attacker_uids)
-                if _usable(c)), None)
+    user = world.current().username
+    run = _RUNS.get((user, gym_id))
+    if run and (now_ms - run["ts"] > _RUN_IDLE_MS
+                or defender["uid"] not in run["lineup"]
+                or defender["uid"] in run["beaten"]):
+        run = None                       # stale, or a different trip -- start over
+    if run:
+        # The next battle of a run: carry on with whoever is standing, starting
+        # with the Pokemon that won the last one.
+        order = [run["active"]] + [u for u in run["team"] if u != run["active"]]
+        atk = next((c for c in (world.get_caught(u) for u in order) if _usable(c)), None)
+    else:
+        atk = next((c for c in (world.get_caught(u) for u in attacker_uids)
+                    if _usable(c)), None)
     if atk is None:
         # Fall back to your strongest healthy Pokemon. The client's chosen team
         # should normally be honoured, but refusing the battle outright over a
@@ -2948,6 +3111,10 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
     # dropped a chunk on the first tap.
     amax = _hp_for(atk["cp"], atk["pokemon_id"], atk["uid"])
     ahp = max(1, min(current_hp(atk), amax))
+    # Training is practice: your Pokemon go in at full health and nothing that
+    # happens in the fight sticks -- not to them, not to your team's defenders.
+    if world.gym_team(gym_id) == world.my_team() and not is_raid:
+        ahp = amax
     # Same-team gyms are TRAINING; enemy gyms are NORMAL (attack). The client runs
     # the fight locally and -- measured on this build -- will enter combat for a
     # TRAINING battle but NOT a NORMAL one, so enemy battles open and then freeze
@@ -2966,7 +3133,20 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
     # whole gym, and `beaten` tracks who's fallen this run without mutating the gym
     # until it's over.
     friendly = (world.gym_team(gym_id) == world.my_team()) and not is_raid
-    lineup = [m["uid"] for m in sorted(members, key=lambda m: m.get("cp", 0))]
+    if run is None:
+        # First battle of a trip: the defender the client picked, then the rest
+        # weakest first. Your team is the one you chose, in that order.
+        team = [atk["uid"]] + [c["uid"] for c in
+                               (world.get_caught(u) for u in attacker_uids)
+                               if _usable(c) and c["uid"] != atk["uid"]]
+        run = {"lineup": [defender["uid"]] + [m["uid"] for m in
+                          sorted(members, key=lambda m: m.get("cp", 0))
+                          if m["uid"] != defender["uid"]],
+               "beaten": [], "team": team, "active": atk["uid"], "ts": now_ms}
+        _RUNS[(user, gym_id)] = run
+    run["ts"] = now_ms
+    run["active"] = atk["uid"]
+    lineup = run["lineup"]
     world.BATTLES[bid] = {"gym": gym_id, "attacker": atk["uid"],
                           "defender": defender["uid"],
                           "atk_pid": atk["pokemon_id"], "def_pid": defender["pokemon_id"],
@@ -2974,11 +3154,18 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
                           "atk_hp": ahp, "def_hp": dhp,
                           "atk_max": amax, "def_max": dmax, "type": btype,
                           "raid": is_raid, "friendly": friendly,
-                          "lineup": lineup, "beaten": [], "prestige_delta": 0,
-                          "start": now_ms, "player": world.current().username}
+                          "lineup": lineup, "beaten": run["beaten"], "prestige_delta": 0,
+                          # the team you picked, in order: the next healthy one
+                          # comes in when the active attacker faints
+                          "team": run["team"], "run_key": (user, gym_id),
+                          # the defender's first swing, after the 3-2-1 countdown
+                          "def_next": now_ms + 3500,
+                          "start": now_ms, "player": user}
     lvl, _xp = world.stats()
     me = _battle_participant(atk["pokemon_id"], atk["uid"], atk["cp"], ahp,
-                             world.current().username, lvl, hp_max=amax)
+                             user, lvl, hp_max=amax,
+                             reserve=_team_reserve(run["team"], atk["uid"],
+                                                   defender["uid"], fresh=friendly))
     # A raid boss is not a person -- report level -1 so nobody mistakes "raid"
     # for a real trainer who parked a Mewtwo in every gym.
     def_lvl = -1 if is_raid else lvl
@@ -2986,7 +3173,7 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
             .uint(1, BA_PLAYER_JOIN)
             .int_(2, now_ms)
             .int_(3, 0)
-            .uint(8, atk["uid"])
+            .fixed64(8, atk["uid"])                # fixed64 on the wire, like every action
             .message(9, me)                        # player_joined
             .to_bytes())
     log = (pb.Writer()
@@ -3006,6 +3193,7 @@ def build_start_gym_battle_response(gym_id, attacker_uids, defender_uid, now_ms)
                                             defender.get("trainer", "Rival"), def_lvl,
                                             hp_max=dmax))
             .message(6, log)
+            .message(7, me)                                    # attacker
             .to_bytes())
 
 
@@ -3047,7 +3235,9 @@ def parse_attack_gym(msg):
             a = pb.decode(raw)
             actions.append({"type": pb.get(a, 1, pb.WT_VARINT) or 0,
                             "start": pb.get(a, 2, pb.WT_VARINT) or 0,
-                            "duration": pb.get(a, 3, pb.WT_VARINT) or 0})
+                            "duration": pb.get(a, 3, pb.WT_VARINT) or 0,
+                            # active_pokemon_id (fixed64): who a SWAP brings in
+                            "active": pb.get(a, 8, pb.WT_64) or pb.get(a, 8, pb.WT_VARINT) or 0})
     last = 0
     raw_last = pb.get(f, 4, pb.WT_LEN)
     if isinstance(raw_last, bytes):
@@ -3137,6 +3327,7 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
         for old, ob in list(world.BATTLES.items()):
             if ob.get("finished") and now_ms - ob["finished"] > 30000:
                 world.BATTLES.pop(old, None)
+        _RUNS.pop(b.get("run_key"), None)
         quit_act = _action(BA_QUIT, now_ms, 0, 0, 0, b["attacker"], b["defender"])
         lw = (pb.Writer().uint(1, BS_TIMED_OUT)
               .uint(2, b.get("type", BT_NORMAL))
@@ -3159,25 +3350,27 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
     dmg_special = _cfg.get("battles", "special_damage", cast=int)
     dmg_back = _cfg.get("battles", "defender_damage", cast=int)
 
-    log_actions = []
-    # The client SCHEDULES every action we return at its ActionStartMs, on its own
-    # battle clock. The old code stacked each action onto a server cursor that ran
-    # ahead of real time (it added every duration, and taps arrive faster than
-    # that), so the actions were always dated in the future: the damage applied --
-    # HP is read straight off active_defender -- but the animation never played,
-    # and occasionally a whole backlog resolved at once. Echo the client's own
-    # timestamps verbatim and hang the counter-attack off the end of each.
-    # Which moves the two sides are actually using. The client resolves an action
-    # to an animation via the performer's moveset, so every action we emit has to
-    # carry that move's real duration and damage window.
-    atk_quick, atk_charged = moves_for(b["atk_pid"], b["attacker"])
-    def_quick, _dc = moves_for(b["def_pid"], b["defender"])
-
-    # Real matchup: each hit is scaled by the MOVE's own type -- its effectiveness
-    # against the target plus STAB when it matches the user's type -- so who wins
-    # depends on the Pokemon (and moves) you brought, not a flat number.
-    atk_types = pokemon_types(b["atk_pid"])
-    def_types = pokemon_types(b["def_pid"])
+    # How the 0.29/0.35 client runs a gym battle (read from its code, 2026-09-25):
+    #   * It animates an action only if it can match it to a Pokemon, by
+    #     attacker_index: your actions carry your player index (0 in a solo
+    #     fight), the DEFENDER's carry -1 (BattleFrameObservableService.Update
+    #     calls AssignNewPokemonActions(..., -1, enemy)). Everything used to go
+    #     out as 0, so the defender never had an attack to animate -- and its
+    #     swings were filed under YOU.
+    #   * It skips an action that has already finished by the time it arrives
+    #     (start + duration < now), so the defender's swings are sent AHEAD of
+    #     time, as a plan, and their damage is booked once they have landed.
+    #   * It works out damage itself with the real formula and only ever lets the
+    #     server's HP pull a bar DOWN, so both sides must compute the same numbers
+    #     (they do: same moves, IVs and cp_multiplier as the Pokemon we send).
+    #   * Each defender is its own battle. Beating one ends the battle with a
+    #     VICTORY whose BattleResults name next_defender_pokemon_id; the client
+    #     then starts the next battle itself. Without results it sat on the battle
+    #     screen forever.
+    #   * When your Pokemon faints it swaps to whichever Pokemon the server now
+    #     reports as active_attacker -- as long as that one was in the team it was
+    #     given at PLAYER_JOIN (reserve_pokemon).
+    ME, FOE = 0, -1                      # attacker_index values
 
     def _hit_mult(move_id, own_types, tgt_types):
         mt = _gd.MOVE_TYPES.get(move_id) if _gd else None
@@ -3186,32 +3379,31 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
         stab = 1.25 if mt in (own_types or ()) else 1.0
         return _effectiveness(mt, tgt_types) * stab
 
-    eff_quick = _hit_mult(atk_quick, atk_types, def_types)
-    eff_special = _hit_mult(atk_charged, atk_types, def_types)
-    eff_back = _hit_mult(def_quick, def_types, atk_types)
-    _cm = _gd.MOVES.get(atk_charged) if _gd else None
-    pow_factor = max(0.6, min(1.8, _cm[4] / 55.0)) if _cm else 1.0
-    # Prefer the REAL damage formula (keeps the HP bars honest -- see
-    # _battle_damage); the flat-config numbers scaled by effectiveness stay as a
-    # fallback for when the game master lacks the move/species.
-    _rq = _battle_damage(b["atk_pid"], b["attacker"], b["atk_cp"],
-                         b["def_pid"], b["defender"], b["def_cp"], atk_quick,
-                         atk_types, def_types)
-    _rs = _battle_damage(b["atk_pid"], b["attacker"], b["atk_cp"],
-                         b["def_pid"], b["defender"], b["def_cp"], atk_charged,
-                         atk_types, def_types)
-    _rb = _battle_damage(b["def_pid"], b["defender"], b["def_cp"],
-                         b["atk_pid"], b["attacker"], b["atk_cp"], def_quick,
-                         def_types, atk_types)
-    hit_quick = _rq if _rq is not None else max(1, round(dmg_atk * eff_quick))
-    hit_special = _rs if _rs is not None else max(1, round(dmg_special * eff_special * pow_factor))
-    hit_back = _rb if _rb is not None else max(1, round(dmg_back * eff_back))
-    if b.get("raid"):
-        # A raid boss is tuned for a GROUP: huge shared HP, but its counter-attack is
-        # scaled down -- at full strength a CP 9999 boss one-shots anything a normal
-        # trainer owns (measured: CP 882 Hypno, 67 HP, gone in two hits).
-        hit_back = max(1, int(round(hit_back * _cfg.get(
-            "raids", "boss_damage_multiplier", cast=float))))
+    def _pair():
+        """Hit sizes for the CURRENT attacker vs the CURRENT defender."""
+        aq, ac = moves_for(b["atk_pid"], b["attacker"])
+        dq, _dc = moves_for(b["def_pid"], b["defender"])
+        at, dt = pokemon_types(b["atk_pid"]), pokemon_types(b["def_pid"])
+        _cm = _gd.MOVES.get(ac) if _gd else None
+        pow_factor = max(0.6, min(1.8, _cm[4] / 55.0)) if _cm else 1.0
+        rq = _battle_damage(b["atk_pid"], b["attacker"], b["atk_cp"],
+                            b["def_pid"], b["defender"], b["def_cp"], aq, at, dt)
+        rs = _battle_damage(b["atk_pid"], b["attacker"], b["atk_cp"],
+                            b["def_pid"], b["defender"], b["def_cp"], ac, at, dt)
+        rb = _battle_damage(b["def_pid"], b["defender"], b["def_cp"],
+                            b["atk_pid"], b["attacker"], b["atk_cp"], dq, dt, at)
+        back = rb if rb is not None else max(1, round(dmg_back * _hit_mult(dq, dt, at)))
+        if b.get("raid"):
+            # A raid boss is tuned for a GROUP: huge shared HP, but its counter-attack
+            # is scaled down -- at full strength a CP 9999 boss one-shots anything a
+            # normal trainer owns (measured: CP 882 Hypno, 67 HP, gone in two hits).
+            back = max(1, int(round(back * _cfg.get(
+                "raids", "boss_damage_multiplier", cast=float))))
+        return {"aq": aq, "ac": ac, "dq": dq,
+                "quick": rq if rq is not None else max(1, round(dmg_atk * _hit_mult(aq, at, dt))),
+                "special": rs if rs is not None else max(1, round(
+                    dmg_special * _hit_mult(ac, at, dt) * pow_factor)),
+                "back": back}
 
     # Multiplayer raid: start from the SHARED boss HP, so the bar includes every hit
     # the other trainers landed since our last request.
@@ -3220,55 +3412,218 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
         b["def_hp"] = world.raid_boss_state(gym_id, b["def_max"], now_ms)["hp"]
         raid_start_hp = b["def_hp"]
 
+    log_actions = []
+    pr = _pair()
     cursor = max(now_ms, int(last_seen) + 1, int(b.get("last_emit", 0)) + 1)
-    tail = None          # end of the last action we echoed, on the CLIENT's clock
+    tail = None
+    state = BS_ACTIVE
+    run = _RUNS.get(b.get("run_key"))
+    if run:
+        run["ts"] = now_ms
+    b.setdefault("def_next", b["start"] + 3500)
+    plan = b.setdefault("plan", [])          # the defender's swings, sent ahead
+    dodges = b.setdefault("dodges", [])
+    for a in actions:
+        if a["type"] == BA_DODGE:
+            ds = int(a.get("start") or 0) or cursor
+            dodges.append((ds, ds + int(a["duration"] or 500)))
+    del dodges[:-12]
+
+    def _mark(end):
+        nonlocal tail
+        tail = end if tail is None else max(tail, end)
+
+    keep = not b.get("friendly")        # training leaves no damage behind
+
+    def _me(active=True):
+        lvl, _x = world.stats()
+        return _battle_participant(b["atk_pid"], b["attacker"], b["atk_cp"],
+                                   max(0, int(b["atk_hp"])), b.get("player") or "Trainer",
+                                   lvl, hp_max=b.get("atk_max"), active=active,
+                                   reserve=_team_reserve(b.get("team", []), b["attacker"],
+                                                         fresh=not keep))
+
+    def _results(next_uid, xp, points, active=True):
+        """BattleResults { gym_state=1, attackers=2, player_xp_awarded=3,
+        next_defender_pokemon_id=4, gym_points_delta=5 }. attackers and
+        player_xp_awarded are indexed by player -- the client reads entry 0 and
+        throws if it is missing."""
+        return (pb.Writer()
+                .message(1, _gym_state_bytes(gym_id, now_ms))
+                .message(2, _me(active))
+                .int_(3, int(xp))
+                .int_(4, int(next_uid or 0))
+                .int_(5, int(points))
+                .to_bytes())
+
+    def _end_action(kind, t, results):
+        return (pb.Writer().uint(1, kind).int_(2, t).int_(3, 0)
+                .int_(6, ME).int_(7, FOE)
+                .fixed64(8, b["attacker"]).message(10, results)
+                .fixed64(14, b["defender"]).to_bytes())
+
+    def _plan_until(limit):
+        while b["def_next"] <= limit:
+            ddur, ddws, ddwe, _de = move_timing(pr["dq"])
+            t0 = int(b["def_next"])
+            plan.append({"t0": t0, "dur": ddur, "dws": ddws, "dwe": ddwe,
+                         "sent": False, "done": False})
+            b["def_next"] = t0 + ddur + _random.randint(1500, 2500)
+
+    def _defender_down(t):
+        """The defender fainted at t: this battle is won. Returns the state."""
+        log_actions.append(_action(BA_FAINT, t, 0, FOE, FOE, b["defender"], b["defender"]))
+        plan[:] = [p for p in plan if p["done"]]      # its queued swings never happen
+        win_xp = _cfg.get("battles", "win_xp", cast=int)
+        if b.get("raid"):
+            # Beating the boss doesn't take the gym; the catchable drops were handed
+            # out when the shared HP hit 0.
+            world.add_xp(win_xp)
+            world.bump("battle_attack_won")
+            world.bump("battle_attack_total")
+            log_actions.append(_end_action(BA_VICTORY, t, _results(0, win_xp, 0)))
+            return BS_VICTORY
+        dp = world.prestige_for_defeat(b["atk_cp"], b["def_cp"])
+        dp = int(dp * _cfg.get("gyms", "prestige_gain_mult" if b.get("friendly")
+                               else "prestige_loss_mult", cast=float))
+        signed = dp if b.get("friendly") else -dp
+        b["prestige_delta"] = signed
+        # Bank the knockout (the owner's copy comes home fainted), then the
+        # prestige: training raises the gym, attacking drains it, and at 0
+        # add_prestige() sends everyone home so the winner can claim it.
+        if keep:
+            world.set_gym_hp(gym_id, b["defender"], 0)
+        newp, lvl, ejected = world.add_prestige(gym_id, signed)
+        b["gym_result"] = (newp, lvl, len(ejected))
+        b["beaten"].append(b["defender"])
+        still = {m["uid"] for m in world.gym_members(gym_id)}
+        nxt = next((u for u in b.get("lineup", [])
+                    if u not in b["beaten"] and u in still), None)
+        # The run's XP is battles.win_xp, shared out over the defenders you beat.
+        xp = max(1, win_xp // max(1, len(b.get("lineup", [])) or 1))
+        world.add_xp(xp)
+        if nxt is None:
+            _coins = _cfg.get("gyms", "battle_win_coins", cast=int)
+            if _coins > 0:
+                world.add_coins(_coins)
+            # Ace Trainer (training your own team's gym) vs Battle Girl (taking
+            # someone else's) -- scored from the REAL relationship.
+            if b.get("friendly"):
+                world.bump("battle_training_won")
+                world.bump("battle_training_total")
+            else:
+                world.bump("battle_attack_won")
+                world.bump("battle_attack_total")
+            _RUNS.pop(b.get("run_key"), None)
+        elif run:
+            run["active"] = b["attacker"]
+        b["next_defender"] = nxt
+        log_actions.append(_end_action(BA_VICTORY, t, _results(nxt, xp, signed)))
+        return BS_VICTORY
+
+    def _swap_to(uid, t):
+        nonlocal pr
+        c = world.get_caught(uid)
+        if not c:
+            return False
+        if keep:
+            world.update_caught(b["attacker"], stamina=max(0, int(b["atk_hp"])))
+        amax = _hp_for(c["cp"], c["pokemon_id"], c["uid"])
+        b.update(attacker=c["uid"], atk_pid=c["pokemon_id"], atk_cp=c["cp"],
+                 atk_hp=max(0, min(current_hp(c), amax)) if keep else amax,
+                 atk_max=amax, energy=0)
+        log_actions.append(_action(BA_SWAP, t, 1000, ME, FOE, c["uid"], b["defender"]))
+        b["def_next"] = max(b["def_next"], t + 1500)
+        if run:
+            run["active"] = c["uid"]
+        pr = _pair()
+        return True
+
+    def _attacker_down(t):
+        """Your Pokemon fainted at t: next one in, or the battle is lost."""
+        b["atk_hp"] = 0
+        if keep:
+            world.update_caught(b["attacker"], stamina=0)
+        log_actions.append(_action(BA_FAINT, t, 0, ME, ME, b["attacker"], b["attacker"]))
+        for u in b.get("team", []):
+            if u == b["attacker"]:
+                continue
+            c = world.get_caught(u)
+            if c and current_hp(c) > 0 and not world.is_deployed(u):
+                _swap_to(u, t + 1000)
+                return BS_ACTIVE
+        if b.get("friendly"):
+            world.bump("battle_training_total")
+        else:
+            world.bump("battle_attack_total")
+        _RUNS.pop(b.get("run_key"), None)
+        log_actions.append(_end_action(BA_DEFEAT, t, _results(0, 0, 0, active=False)))
+        return BS_DEFEATED
+
+    # Everything that happened, in the order it LANDED: the defender's swings once
+    # they are safely past (a dodge is reported a beat after it happens, so give
+    # it 800 ms to arrive), and your moves as the client reports them.
+    _plan_until(now_ms + 2500)
+    events = []
+    for p in plan:
+        land = p["t0"] + p["dwe"]
+        if not p["done"] and land <= now_ms - 800:
+            events.append((land, 0, p))
     for a in actions:
         kind = a["type"]
         start = int(a.get("start") or 0) or cursor
-        if kind == BA_ATTACK:
-            move = atk_quick
-            b["def_hp"] -= hit_quick
-        elif kind == BA_SPECIAL:
-            move = atk_charged
-            b["def_hp"] -= hit_special
-        elif kind == BA_DODGE:
-            move = None                             # dodged: no counter this beat
-        else:
-            continue
-        if move is None:
-            dur = int(a["duration"] or 700)
-            log_actions.append(_action(kind, start, dur, 0, 0,
-                                       b["attacker"], b["defender"]))
-        else:
-            dur, dws, dwe, energy = move_timing(move, int(a["duration"] or 700))
-            # Charged moves carry a negative energy_delta, so this drains on its
-            # own -- no need to special-case the special.
-            b["energy"] = max(0, min(100, b.get("energy", 0) + energy))
-            log_actions.append(_action(kind, start, dur, 0, 0,
-                                       b["attacker"], b["defender"],
-                                       energy=energy, dw_start=dws, dw_end=dwe))
-        end = start + dur
-        if kind != BA_DODGE and b["def_hp"] > 0:
-            # ...and the defender answers, which is what makes it feel like a fight
-            ddur, ddws, ddwe, denergy = move_timing(def_quick)
-            b["atk_hp"] -= hit_back
-            # NOTE: measured 2026-08-04 -- this client does NOT replay server-sent
-            # battle actions (a probe action attributed to the player animated 0 of
-            # 4 times, and "Action start:" never appears in the client log). Gym
-            # battles are simulated client-side; the log we send carries the
-            # authoritative outcome, not the choreography. We still emit the
-            # defender's counter so the log is truthful and the HP we report is
-            # explained, but the animation for it comes from the client or not at all.
-            log_actions.append(_action(BA_ATTACK, end, ddur, 0, 0,
-                                       b["defender"], b["attacker"],
-                                       energy=denergy, dw_start=ddws, dw_end=ddwe))
-            end += ddur
-        tail = end if tail is None else max(tail, end)
-    # Faints and the victory banner have to be dated on whatever clock the echoed
-    # actions used, not on ours -- if the client turns out to send battle-relative
-    # times, a wall-clock faint would land ~1.7e12 ms away and never play.
-    t = tail if tail is not None else cursor
+        a["_start"] = start
+        if kind in (BA_ATTACK, BA_SPECIAL):
+            move = pr["aq"] if kind == BA_ATTACK else pr["ac"]
+            _d, dws, _e, _n = move_timing(move, int(a["duration"] or 700))
+            events.append((start + dws, 1, a))
+        elif kind in (BA_DODGE, BA_SWAP):
+            events.append((start, 1, a))
+    events.sort(key=lambda e: (e[0], e[1]))
 
+    for when, who, ev in events:
+        if state != BS_ACTIVE:
+            break
+        if who == 0:                                 # the defender's swing lands
+            p = ev
+            if p["done"]:
+                continue
+            p["done"] = True
+            hit = pr["back"]
+            lo, hi = p["t0"] + p["dws"], p["t0"] + p["dwe"]
+            if any(ds <= hi and de >= lo for ds, de in dodges):
+                hit = max(1, int(hit * 0.25))        # 2016: a dodge takes 75% off
+            b["atk_hp"] -= hit
+            b["energy"] = max(0, min(100, b.get("energy", 0) + hit // 2))
+            if b["atk_hp"] <= 0:
+                state = _attacker_down(when)
+            continue
+        a = ev
+        kind, start = a["type"], a["_start"]
+        if kind == BA_SWAP:
+            want = a.get("active") or 0
+            c = world.get_caught(want) if want else None
+            if (c and want != b["attacker"] and want in b.get("team", [])
+                    and current_hp(c) > 0):
+                _swap_to(want, start)
+            continue
+        if kind == BA_DODGE:
+            dur = int(a["duration"] or 500)
+            log_actions.append(_action(kind, start, dur, ME, FOE, b["attacker"], b["defender"]))
+            _mark(start + dur)
+            continue
+        move = pr["aq"] if kind == BA_ATTACK else pr["ac"]
+        dur, dws, dwe, energy = move_timing(move, int(a["duration"] or 700))
+        # Charged moves carry a negative energy_delta, so this drains on its own.
+        b["energy"] = max(0, min(100, b.get("energy", 0) + energy))
+        log_actions.append(_action(kind, start, dur, ME, FOE, b["attacker"], b["defender"],
+                                   energy=energy, dw_start=dws, dw_end=dwe))
+        _mark(start + dur)
+        b["def_hp"] -= pr["quick"] if kind == BA_ATTACK else pr["special"]
+        if b["def_hp"] <= 0 and not b.get("raid"):
+            state = _defender_down(start + dwe)
+
+    t = tail if tail is not None else cursor
     if raid_start_hp is not None:
         # Bank this request's damage into the shared pool; the pool's answer is the
         # boss's real HP (someone else may have finished it meanwhile).
@@ -3279,102 +3634,34 @@ def build_attack_gym_response(gym_id, battle_id, actions, now_ms, last_seen=0) -
             _cfg.get("raids", "respawn_minutes", cast=float) * 60 * 1000)
         b["def_hp"] = left
         if felled:
-            # Reward the whole group once: everyone who did enough damage gets the
-            # boss dropped at their own feet, whether or not they're still fighting.
             need = b["def_max"] * _cfg.get("raids", "min_damage_percent", cast=float) / 100.0
-            for who, dmg in group.items():
+            for who_, dmg in group.items():
                 if dmg >= need:
-                    _raid_drop(b, now_ms, who)
+                    _raid_drop(b, now_ms, who_)
+        if state == BS_ACTIVE and b["def_hp"] <= 0:
+            state = _defender_down(t)
 
-    state = BS_ACTIVE
-    if b["def_hp"] <= 0:
-        log_actions.append(_action(BA_FAINT, t, 0, 0, 0,
-                                   b["defender"], b["defender"]))
-        # Tally prestige for beating THIS defender (raids have no gym to move).
-        if not b.get("raid"):
-            dp = world.prestige_for_defeat(b["atk_cp"], b["def_cp"])
-            dp = int(dp * _cfg.get("gyms", "prestige_gain_mult" if b.get("friendly")
-                                   else "prestige_loss_mult", cast=float))
-            b["prestige_delta"] = b.get("prestige_delta", 0) + (
-                dp if b.get("friendly") else -dp)
-        b.setdefault("beaten", []).append(b["defender"])
-        # Bank the knockout. set_gym_hp() also zeroes the OWNER's copy, so a
-        # defender that lost comes home fainted rather than fresh. (No-op in a
-        # raid: the boss is not a gym member and has its own shared pool.)
-        world.set_gym_hp(gym_id, b["defender"], 0)
-        # Advance to the next un-beaten defender from the run's snapshot. The gym
-        # roster is left untouched until the run ends, so prestige is applied once.
-        # In raid mode gym_members() always reports the boss, so a raid is one
-        # boss, then over.
-        nxt = None
-        if not b.get("raid"):
-            nxt_uid = next((u for u in b.get("lineup", [])
-                            if u not in b["beaten"]), None)
-            if nxt_uid is not None:
-                nxt = next((m for m in world.gym_members(gym_id)
-                            if m["uid"] == nxt_uid), None)
-        if nxt:
-            nhp, nmax = _defender_hp(nxt)
-            b.update(defender=nxt["uid"], def_pid=nxt["pokemon_id"],
-                     def_cp=nxt["cp"], def_hp=nhp, def_max=nmax)
-        else:
-            state = BS_VICTORY
-            if b.get("raid"):
-                # Beating the boss doesn't take the gym. The catchable drops were
-                # already handed to every qualifying trainer when the shared HP hit 0
-                # (above), so each raider just gets the victory + XP here.
-                pass
-            else:
-                # Whole lineup down: bank the run's prestige. Training raises the
-                # gym; attacking drains it, and at 0 add_prestige() sends everyone
-                # home so the winner can claim it with a fresh deploy.
-                newp, lvl, ejected = world.add_prestige(
-                    gym_id, b.get("prestige_delta", 0))
-                b["gym_result"] = (newp, lvl, len(ejected))
-            world.add_xp(_cfg.get("battles", "win_xp", cast=int))
-            _coins = _cfg.get("gyms", "battle_win_coins", cast=int)
-            if _coins > 0:
-                world.add_coins(_coins)
-            # Ace Trainer (training your own team's gym) vs Battle Girl (taking
-            # someone else's) -- scored from the REAL relationship, not the type we
-            # reported to the client.
-            if b.get("friendly"):
-                world.bump("battle_training_won")
-                world.bump("battle_training_total")
-            else:
-                world.bump("battle_attack_won")
-                world.bump("battle_attack_total")
-            log_actions.append(_action(BA_VICTORY, t, 0, 0, 0,
-                                       b["attacker"], b["defender"]))
-    elif b["atk_hp"] <= 0:
-        state = BS_DEFEATED
-        # A lost run still counts the prestige for defenders you DID topple first,
-        # so a strong gym can be worn down over several attacks.
-        if not b.get("raid") and b.get("prestige_delta"):
-            newp, lvl, ejected = world.add_prestige(gym_id, b["prestige_delta"])
-            b["gym_result"] = (newp, lvl, len(ejected))
-        if b.get("friendly"):
-            world.bump("battle_training_total")
-        else:
-            world.bump("battle_attack_total")
-        b["atk_hp"] = 0                                        # your Pokemon fainted
-        log_actions.append(_action(BA_FAINT, t, 0, 0, 0,
-                                   b["attacker"], b["attacker"]))
-        log_actions.append(_action(BA_DEFEAT, t, 0, 0, 0,
-                                   b["defender"], b["attacker"]))
+    # Send the defender's upcoming swings (each once) so the client can play them.
+    if state == BS_ACTIVE:
+        for p in plan:
+            if not p["sent"]:
+                p["sent"] = True
+                log_actions.append(_action(BA_ATTACK, p["t0"], p["dur"], FOE, ME,
+                                           b["defender"], b["attacker"],
+                                           dw_start=p["dws"], dw_end=p["dwe"]))
+    del plan[:-8]
 
-    # Keep the stored health in step with the battle on EVERY beat, not only when
-    # something faints: win a gym on 8 HP, back out, and the Pokemon list should
-    # not draw a full bar -- nor should the next attacker face a healed defender.
+    # Keep the stored health in step with the battle on EVERY beat.
     b["atk_hp"] = max(0, min(int(b["atk_hp"]), int(b.get("atk_max") or 1)))
     b["def_hp"] = max(0, min(int(b["def_hp"]), int(b.get("def_max") or 1)))
-    world.update_caught(b["attacker"], stamina=b["atk_hp"])
-    if not b.get("raid"):
-        world.set_gym_hp(gym_id, b["defender"], b["def_hp"])
+    if keep:
+        world.update_caught(b["attacker"], stamina=b["atk_hp"])
+        if not b.get("raid") and b["def_hp"] > 0:
+            world.set_gym_hp(gym_id, b["defender"], b["def_hp"])
 
     b["last_emit"] = t
     if state != BS_ACTIVE:
-        b["finished"] = now_ms          # keep it briefly so late taps still match
+        b["finished"] = now_ms          # keep it briefly so late polls still match
         b["end_state"] = state
         for old, ob in list(world.BATTLES.items()):
             if ob.get("finished") and now_ms - ob["finished"] > 30000:
@@ -3466,6 +3753,8 @@ def build_gym_details_response(fort_id, lat, lng, now_ms) -> bytes:
     trainer_public_profile=2 }. Without this the client can't open a Gym at all."""
     import world
     name = _PLACED_NAMES.get(fort_id) or GYM_NAMES[abs(hash(fort_id)) % len(GYM_NAMES)]
+    if lat or lng:
+        _GYM_POS[fort_id] = (lat, lng)
     fort = build_fort(fort_id, lat, lng, now_ms, is_gym=True)
     gs = pb.Writer().message(1, fort)
     for m in world.gym_members(fort_id):
@@ -4274,6 +4563,10 @@ def _l17_centres(cid15):
     return got
 
 
+# Incense Pokemon: encounter id -> (lat, lng, expires_ms), fixed where each first appeared.
+_INCENSE_POS = {}
+
+
 def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
     # GetMapObjectsResponse { map_cells=1, status=2 (1=SUCCESS), time_of_day=3 (1=DAY) }
     now = int(time.time() * 1000)
@@ -4705,28 +4998,58 @@ def build_get_map_objects_response(cell_ids, lat, lng) -> bytes:
             spawns.append(build_spawn_point(_s["lat"], _s["lng"]))
             _sight(nearby, _pid, _s["lat"], _s["lng"], _eid)
 
-        # Incense: more wild Pokemon around the trainer while it burns.
-        if cid == player_cell and _proc_spawns and _world.item_active(401):
-            _n = _cfg.get("boosts", "incense_extra_spawns", cast=int)
-            for k in range(_n):
-                r = _random.Random((cid ^ (_win * 0x9E3779B1) ^ (k * 0x51ED2701)
-                                    ^ 0x1CE45E) & 0x7FFFFFFF)
-                ang = 2 * _math.pi * k / max(1, _n) + r.uniform(-0.3, 0.3)
-                dist = 18.0 + r.random() * 40.0
-                dl = lat + (dist * _math.cos(ang)) / 111320.0
-                dn = lng + (dist * _math.sin(ang)) / (
-                    111320.0 * max(0.2, _math.cos(_math.radians(lat))))
-                eid = (cid ^ 0x1CE45E ^ (k * 0x9E3779B1) ^ (_win * 0x85EBCA6B)) & ((1 << 62) - 1)
-                if _world.is_despawned(eid):
+        # Incense: one extra Pokemon beside the trainer every incense_spawn_seconds while
+        # it burns, each staying incense_spawn_life_seconds. The Shiny Incense (402, or the
+        # old server-only 9401) brings its own the same way, and each of THOSE is shiny at
+        # shiny.incense_spawn_rate. A spawn's place is fixed when it first appears (where
+        # the trainer was then), so walking on leaves it behind like a real one.
+        if _proc_spawns:
+            import shiny as _shiny
+            _every = max(5, _cfg.get("boosts", "incense_spawn_seconds", cast=int)) * 1000
+            _life = max(10, _cfg.get("boosts", "incense_spawn_life_seconds", cast=int)) * 1000
+            for _inc in _world.applied_items():
+                _item = int(_inc.get("item", 0))
+                if _item not in (ITEM_INCENSE, _world.SHINY_INCENSE_BAG_ITEM,
+                                 _world.SHINY_INCENSE_ITEM):
                     continue
-                pid = _pick_species(r, _ev, lat, lng)
-                cp = _pick_cp(r, _ev, pid)
-                sid = _hex_id((eid, "inc"), 11)
-                wild.append(build_wild_pokemon(eid, dl, dn, sid, pid, now, SPAWN_MS, cp=cp))
-                catch.append(build_map_pokemon(sid, eid, pid, dl, dn, expire))
-                _world.remember_spawn(eid, pid, dl, dn, cp, sid, expire)
-                spawns.append(build_spawn_point(dl, dn))
-                _sight(nearby, pid, dl, dn, eid)
+                _t0 = int(_inc["applied_ms"])
+                _last = (min(now, int(_inc["expires_ms"]) - 1) - _t0) // _every
+                _first = max(0, (now - _life - _t0) // _every + 1)
+                for k in range(int(_first), int(_last) + 1):
+                    born = _t0 + k * _every
+                    gone = born + _life
+                    if not (born <= now < gone):
+                        continue
+                    eid = (_stable_hash(("inc", _item, _t0, k)) ^ 0x1CE45E) & ((1 << 62) - 1)
+                    pos = _INCENSE_POS.get(eid)
+                    if pos is None:
+                        if cid != player_cell:
+                            continue             # place it on the trainer's own cell pass
+                        r = _random.Random(eid & 0x7FFFFFFF)
+                        ang = r.uniform(0, 2 * _math.pi)
+                        dist = 12.0 + r.random() * 28.0
+                        pos = (lat + (dist * _math.cos(ang)) / 111320.0,
+                               lng + (dist * _math.sin(ang)) / (
+                                   111320.0 * max(0.2, _math.cos(_math.radians(lat)))),
+                               gone)
+                        if len(_INCENSE_POS) > 500:
+                            for _k in [_k for _k, _v in _INCENSE_POS.items() if _v[2] < now]:
+                                _INCENSE_POS.pop(_k, None)
+                        _INCENSE_POS[eid] = pos
+                    dl, dn = pos[0], pos[1]
+                    if _cell_of(dl, dn) != cid or _world.is_despawned(eid):
+                        continue
+                    r = _random.Random((eid >> 3) & 0x7FFFFFFF)
+                    pid = _pick_species(r, _ev, dl, dn)
+                    cp = _pick_cp(r, _ev, pid)
+                    if _item != ITEM_INCENSE:
+                        _shiny.set_rate(eid, _cfg.get("shiny", "incense_spawn_rate", cast=float))
+                    sid = _hex_id((eid, "inc"), 11)
+                    wild.append(build_wild_pokemon(eid, dl, dn, sid, pid, now, gone - now, cp=cp))
+                    catch.append(build_map_pokemon(sid, eid, pid, dl, dn, gone))
+                    _world.remember_spawn(eid, pid, dl, dn, cp, sid, gone)
+                    spawns.append(build_spawn_point(dl, dn))
+                    _sight(nearby, pid, dl, dn, eid)
 
         # Lures: extra Pokemon clustered on any lured stop in this cell.
         if _proc_spawns:
@@ -4816,6 +5139,10 @@ def build_download_item_templates_response(templates=None) -> bytes:
                 if res is not None:
                     w.uint(1, res)
                 for t in pb.get_all(d, 2):
+                    w.message(2, t)
+                for t in build_custom_badge_templates():  # our medals' targets
+                    w.message(2, t)
+                for t in build_shiny_item_templates():    # Shiny Incense's Item (402)
                     w.message(2, t)
                 _GAME_MASTER = w.to_bytes()
             except OSError:

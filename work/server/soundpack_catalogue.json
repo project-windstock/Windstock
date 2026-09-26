@@ -26,6 +26,10 @@
      "label": "Wild encounter"
     },
     {
+     "clip": "102_encounter_night",
+     "label": "Wild encounter at night (packs only)"
+    },
+    {
      "clip": "200_ME_gotcha",
      "label": "Catch jingle"
     },

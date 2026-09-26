@@ -233,7 +233,9 @@ DEFAULTS = {
     "boosts": {
         "lucky_egg_minutes": 30,    # double XP while it burns
         "incense_minutes": 30,      # extra wild Pokemon around you
-        "incense_extra_spawns": 6,  # how many more, on top of the usual
+        "incense_extra_spawns": 6,  # (unused since 2026-09-25: see incense_spawn_seconds)
+        "incense_spawn_seconds": 30,       # a burning Incense brings one Pokemon this often
+        "incense_spawn_life_seconds": 180, # ...and each one stays this long (so ~6 at once)
         "lure_minutes": 30,         # a Lure on a PokeStop
         "lure_extra_spawns": 4,     # extra Pokemon around a lured stop
         # true = luring an already-lured stop ADDS its time instead of being refused,
@@ -281,9 +283,14 @@ DEFAULTS = {
         "charm_multiplier": 2.0,    # Shiny Charm: permanent, bought once
         "incense_multiplier": 10.0, # Shiny Incense: while it burns
         "incense_minutes": 30.0,
+        "incense_spawn_rate": 0.1,  # Shiny Incense: chance each Pokemon IT brings is shiny
     },
     "shop": {
         "price_multiplier": 1.0,    # 0.5 = half price, 2.0 = double
+        # true once the Android APK has been run through tools/patch_badges.py: its
+        # in-game store then has art + names for the Shiny Charm / Shiny Incense too
+        # (iOS always does -- the launcher patches its copy)
+        "patched_android": False,
     },
     "daily": {
         "enabled": True,
@@ -549,9 +556,14 @@ _README = [
     "                          stacks with the charm, and only affects spawns you meet",
     "                          while it is running",
     "   incense_minutes ...... how long a Shiny Incense lasts",
+    "   incense_spawn_rate ... a Shiny Incense also brings Pokemon like an Incense does",
+    "                          (boosts.incense_spawn_seconds); each one it brings is shiny",
+    "                          this often (0.1 = 1 in 10)",
     "",
     "shop:",
     "   price_multiplier ..... scales every price in the in-game shop",
+    "   patched_android ...... true if the Android APK went through tools/patch_badges.py:",
+    "                          sell the Shiny Charm / Shiny Incense in its in-game shop too",
     "",
     "daily:  (daily catch/spin streaks, like the real game's daily bonus)",
     "   enabled .............. false = no daily bonuses at all",

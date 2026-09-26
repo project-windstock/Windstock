@@ -42,6 +42,12 @@ _req_ip = _threading.local()      # set by server.py for the request being handl
 _ip_user = {}
 
 
+
+# username -> "ios" / "android", from the client's config-version check at login. The
+# in-game shop lists the Shiny Charm / Shiny Incense only on iOS, whose game files carry
+# their store art (tools/patch_badges.py); on Android they'd be blank tiles.
+USER_PLATFORM = {}
+
 def user_for_ip(ip):
     return _ip_user.get(ip) if ip else None
 
@@ -125,6 +131,7 @@ def _build_returns(reqs, username, log):
                 (f"as a delta since {since}" if since else "in full (cold start)"))
         elif rtype == P.RT.DOWNLOAD_REMOTE_CONFIG_VERSION:
             plat = P.parse_platform(msg)
+            USER_PLATFORM[username] = plat          # the in-game shop depends on it
             returns.append(P.build_download_remote_config_version_response(plat))
             ver = P.parse_client_version(msg)
             log(f"      -> config version check [{plat}] client v{ver // 100 / 10:.2f}"
@@ -220,8 +227,10 @@ def _build_returns(reqs, username, log):
             now = int(time.time() * 1000)
             b = world.BATTLES.get(bid)
             outcome = {1: "trading blows", 2: "VICTORY -- gym taken!",
-                       3: "your Pokemon fainted",
+                       3: "all your Pokemon fainted",
                        4: "you left the battle"}.get(state, f"state {state}")
+            if state == 2 and b and b.get("next_defender"):
+                outcome = "defender beaten -- next one up"
             hp = (f" (your HP {max(0, b['atk_hp'])}/{b['atk_max']}, "
                   f"their HP {max(0, b['def_hp'])}/{b['def_max']})" if b else "")
             prestige = ""
@@ -255,7 +264,7 @@ def _build_returns(reqs, username, log):
                 {1: "Lucky Egg active: double XP", 3: "one is already running",
                  4: "you have none"}.get(res, f"result {res}"))
         elif rtype == P.RT.USE_INCENSE:
-            r = P.build_use_incense_response(P.ITEM_INCENSE)
+            r = P.build_use_incense_response(P.parse_use_incense(msg))
             returns.append(r)
             res = pb.get(pb.decode(r), 1, pb.WT_VARINT)
             log("      -> USE_INCENSE -> " +
@@ -679,7 +688,8 @@ def handle(method, path, query, headers, body, log):
             import world as _w
             _w.use(username)
             p = _w.current()
-            u6 = _shop.build_platform_shop(p.COINS, p.STARDUST)
+            u6 = _shop.build_platform_shop(p.COINS, p.STARDUST,
+                                           USER_PLATFORM.get(username, "android"))
             env = P.build_response_envelope(
                 status_code=P.STATUS_OK,
                 request_id=request_id,

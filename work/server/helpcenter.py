@@ -334,6 +334,8 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
   border-bottom:1px solid #edf2f0}
  header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.02em}
  header p{margin:5px 0 0;font-size:13px;color:#8ba0ab}
+ header a.site{display:inline-block;margin-top:9px;font-size:12.5px;font-weight:700;
+  color:#22987c;text-decoration:none}
  .wrap{max-width:560px;margin:0 auto;padding:16px 14px 40px}
  .card{background:#fff;border:1px solid #ebf1ef;border-radius:14px;padding:16px;
   margin-bottom:14px;box-shadow:0 1px 3px rgba(20,60,80,.05)}
@@ -478,6 +480,7 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <header>
   <h1>Help Center</h1>
   <p>Add a PokeStop or Gym near you</p>
+  <a class="site" href="https://projectwindstock.site.je">Project Windstock website &rarr;</a>
 </header>
 <div class="wrap">
 

@@ -17,7 +17,7 @@ The S-box starts as a memcpy of a constant rather than a fill loop, which
 looks like a custom permutation until you check it -- it is plain 0..255, so
 the KSA is textbook.
 
-NOT VERIFIED END TO END. Every step here is read off the disassembly, and
+VERIFIED END TO END on 2026-09-25 (see tile_key). Originally: Every step here is read off the disassembly, and
 there is no captured ciphertext to check it against: Google never answered us,
 so we have never held a real encrypted tile. The RC4 core round-trips with
 itself, which says the transform is self-consistent, not that it is right.
@@ -48,10 +48,14 @@ def tile_key(x, y, zoom, session=0, cookie=0):
     the server -- leaving both 0 is a valid choice and makes the key depend on
     nothing but the tile.
     """
+    # VERIFIED 2026-09-25 against live Google tiles: the order is x, y, zoom (the
+    # builder's argument shuffle made it read as y, zoom, x). Tile blob on the wire:
+    #   "DRAT" | u16 9 | u32 session | u64 cookie | RC4-drop256(raw deflate(inner))
+    # and the inner tile again starts "DRAT" + varint x + varint y.
     return (SECRET
+            + struct.pack(">I", x & 0xFFFFFFFF)
             + struct.pack(">I", y & 0xFFFFFFFF)
             + struct.pack(">I", zoom & 0xFFFFFFFF)
-            + struct.pack(">I", x & 0xFFFFFFFF)
             + struct.pack(">H", FORMAT_VERSION & 0xFFFF)
             + struct.pack(">H", session & 0xFFFF)
             + struct.pack(">Q", cookie & 0xFFFFFFFFFFFFFFFF))
