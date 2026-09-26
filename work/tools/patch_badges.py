@@ -174,6 +174,37 @@ def patch_incense_material(sa):
     raise SystemExit("incense_fx material not found")
 
 
+MENU_GROW = 1000.0    # canvas units; Blackout 1295 -> 2295 tall covers screens up to ~3.2:1
+MENU_STOCK = {"Blackout": 1112.0, "ButtonCloseFullScreen": 2217.0}   # stock m_SizeDelta.y
+
+
+def patch_menu_blackout(sa):
+    """The Poke Ball menu's backdrop (MainMenuGui/MapRadialMenu/Blackout) and its tap-to-close
+    area are bottom-pivoted with a fixed height made for 16:9 phones: on a 19.5:9 iPhone the
+    top ~17% of the screen stayed uncovered (map and compass showing through). Both grow
+    upward only, so the bottom edge and everything on a 16:9 screen look the same."""
+    names = {}
+    for o in sa.objects.values():
+        if o.type.name == "GameObject":
+            names[o.path_id] = o.read().m_Name
+    rects = {o.path_id: o for o in sa.objects.values() if o.type.name == "RectTransform"}
+    done = []
+    for pid, o in rects.items():
+        t = o.read_typetree()
+        name = names.get(t["m_GameObject"]["m_PathID"])
+        if name not in MENU_STOCK:
+            continue
+        parent = rects.get(t["m_Father"]["m_PathID"])
+        if parent is None or names.get(parent.read_typetree()["m_GameObject"]["m_PathID"]) != "MapRadialMenu":
+            continue
+        if t["m_SizeDelta"]["y"] == MENU_STOCK[name]:      # idempotent
+            t["m_SizeDelta"]["y"] += MENU_GROW
+            o.save_typetree(t)
+        done.append(name)
+    if sorted(done) != ["Blackout", "ButtonCloseFullScreen"]:
+        raise SystemExit(f"MapRadialMenu backdrop not found (got {done})")
+
+
 def patch_sprites(data_dir):
     env = UnityPy.load(os.path.join(data_dir, "sharedassets0.assets"),
                        os.path.join(data_dir, "globalgamemanagers.assets"))
@@ -288,6 +319,7 @@ def patch_sprites(data_dir):
 
     patch_store_sprites(sa, gg, gg_fid, shop_sprites)
     patch_incense_material(sa)
+    patch_menu_blackout(sa)
     _write(os.path.join(data_dir, "sharedassets0.assets"), sa.save())
     return service.path_id, tex_obj.path_id, new_sets
 
