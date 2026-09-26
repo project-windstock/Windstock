@@ -39,7 +39,8 @@ function card(it){
       '</div><div class="sub">'+it.sub+'</div></div><div class="go-in">&rsaquo;</div></a>';
   }
   return '<div class="dlcard" data-region="'+it.region+'" data-name="'+it.name+'">'+
-    '<div><div class="nm">'+it.name+'</div><div class="sub">'+it.region+'</div></div>'+
+    '<div><div class="nm">'+it.name+'</div><div class="sub">'+it.region+
+    ' &middot; <a class="pbf" href="'+it.url+'" download title="Direct download: raw OpenStreetMap extract">.osm.pbf &darr;</a></div></div>'+
     '<div class="act"></div></div>';
 }
 function paint(st){
@@ -97,7 +98,8 @@ def world():
                           "sub": str(len(DL.US_STATES)) + " states · pick a state",
                           "href": "/downloads/us"})
         else:
-            items.append({"name": name, "region": region})
+            items.append({"name": name, "region": region,
+                          "url": DL.pbf_url(region)})
     intro = ('<div class="dlbar">Pick a country to pull its real PokeStops and Gyms '
              'from OpenStreetMap. Each one downloads and appends into your world &mdash; '
              'no restart, and adding one twice never doubles anything.</div>')
@@ -106,7 +108,7 @@ def world():
 
 def us():
     """US states sub-page."""
-    items = [{"name": name, "region": region}
+    items = [{"name": name, "region": region, "url": DL.pbf_url(region)}
              for name, region in DL.US_STATES.items()]
     intro = ('<div class="crumbs"><a href="/downloads">World Data</a> '
              '&rsaquo; <span>United States</span></div>'

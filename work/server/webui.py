@@ -241,6 +241,8 @@ label,.field label{display:block;font-size:11px;color:var(--ink2);
 .dlcard:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg);border-color:#d7e0f0}
 .dlcard .nm{font-weight:700;color:var(--ink);font-size:14.5px}
 .dlcard .sub{font-size:11px;color:var(--ink3);margin:2px 0 0}
+.dlcard .sub a.pbf{color:var(--brand);font-weight:700;text-decoration:none}
+.dlcard .sub a.pbf:hover{text-decoration:underline}
 .dlcard button{padding:8px 15px;font-size:13px}
 .dlcard .st{font-size:12.5px;font-weight:800;white-space:nowrap}
 .dlcard .st.done{color:var(--grass)} .dlcard .st.busy{color:var(--brand)}

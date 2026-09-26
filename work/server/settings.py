@@ -403,6 +403,15 @@ DEFAULTS = {
         "eyes": 1,
         "backpack": 1,
     },
+    "names": {
+        # Colored names. Anything you name in game -- your trainer name at the
+        # name screen, a Pokemon's nickname -- may carry short tags: [red]Ash,
+        # [gold]Ash[/]ketchum, [f80]Ash, [rainbow]Ash (see colortags.py). These
+        # colour the names that DON'T carry tags of their own. '' = plain.
+        "trainer_color": "",        # e.g. "gold", "ff8800", "rainbow"
+        "stop_color": "",           # every PokeStop name
+        "gym_color": "",            # every Gym name; "team" = the holding team's
+    },
     "server": {
         "world_manager_port": 8080,
         # EXPERIMENT: serve our branded HTML page at the real PTC login URL
@@ -605,6 +614,16 @@ _README = [
     "   skin/hair/shirt/pants/hat/shoes/eyes/backpack",
     "                          which outfit piece to wear, by number. Most slots",
     "                          only have a handful (try 0-4); hat 0 = bare head.",
+    "",
+    "names:  (colored names)",
+    "   Type colour tags into any name in game: [red]Ash, [gold]Ash[/]ketchum,",
+    "   [f80]Ash (hex), [rainbow]Ash. Colours: red orange yellow gold green lime",
+    "   teal cyan blue navy purple pink magenta brown white gray black mystic",
+    "   valor instinct. Only the letters count toward the name length limits.",
+    "   trainer_color ........ colour for your trainer name when it has no tags",
+    "   stop_color ........... colour for every PokeStop name ('' = plain)",
+    "   gym_color ............ colour for every Gym name; 'team' = the colour",
+    "                          of the team holding it",
     "",
     "storage:  (bought from the World Manager with gym PokeCoins)",
     "   pokemon_upgrade_step/cost  space added per purchase, and its price",

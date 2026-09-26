@@ -61,6 +61,14 @@ _US = [
 US_STATES = {name: "north-america/us/" + name.lower().replace(" ", "-")
              for name in _US}
 
+# Same URL fetch_pois_pbf pulls (kept here so the pages don't import osmium).
+PBF_URL = "https://download.geofabrik.de/{}-latest.osm.pbf"
+
+
+def pbf_url(region):
+    """Direct link to a region's raw OpenStreetMap extract."""
+    return PBF_URL.format(region)
+
 _lock = threading.Lock()
 BUSY = {}                 # region -> status string while a populate runs
 ERRORS = {}               # region -> last error message

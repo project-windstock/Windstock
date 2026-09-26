@@ -1708,7 +1708,7 @@ def set_codename(name):
     """The trainer's chosen in-game name (NAME_SELECTION step)."""
     p = current()
     with _lock:
-        p.CODENAME = str(name or "")[:15]
+        p.CODENAME = str(name or "")[:60]     # room for [colour] tags
     p.save()
     return p.CODENAME
 

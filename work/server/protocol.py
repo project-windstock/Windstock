@@ -10,6 +10,7 @@ RESPONSE builders below depend on these numbers being right.
 import os
 import time
 import pb
+import colortags
 import settings as _cfg
 
 # ----------------------------------------------------------- RequestEnvelope
@@ -337,7 +338,7 @@ def build_player_data(username: str) -> bytes:
         pass
     w = (pb.Writer()
          .uint(PD_CREATION_MS, _created_ms())         # fixed start date
-         .string(PD_USERNAME, name)
+         .string(PD_USERNAME, colortags.trainer(name))
          .uint(PD_TEAM, _player_team())              # 0 until chosen -> team screen
          .packed_varints(PD_TUTORIAL, tutorial_state())
          .message(PD_AVATAR, build_player_avatar())
@@ -1515,7 +1516,9 @@ def parse_claim_codename(msg):
 
 
 def _codename_ok(name):
-    return bool(_re.fullmatch(r"[A-Za-z0-9]{3,15}", name or ""))
+    # Short colour tags ([red]Ash) are allowed; the 3-15 rule is on what shows.
+    return (bool(_re.fullmatch(r"[A-Za-z0-9]{3,15}", colortags.visible(name or "")))
+            and len(name or "") <= 60)
 
 
 def build_claim_codename_response(codename, username) -> bytes:
@@ -1706,7 +1709,7 @@ def build_pokemon_data(pokemon_id, uid, cp=500, extra=None) -> bytes:
     # the field-1 id which is really a fixed64, not the int32 POGOProtos claims.)
     _fort = world.deployed_fort(uid)
     if _fort:
-        w.string(8, _fort).string(9, e.get("owner") or world.codename() or "")
+        w.string(8, _fort).string(9, colortags.trainer(e.get("owner") or world.codename() or ""))
     # What a real 2016 server sent for every caught Pokemon (tags read from the 0.35
     # metadata): pokeball=21, captured_cell_id=22, creation_time_ms=26.
     if e.get("pokeball"):
@@ -1720,7 +1723,7 @@ def build_pokemon_data(pokemon_id, uid, cp=500, extra=None) -> bytes:
     if e.get("favorite"):
         w.int_(29, 1)
     if e.get("nickname"):
-        w.string(30, str(e["nickname"])[:12])
+        w.string(30, colortags.expand(colortags.clip(str(e["nickname"]), 12)))
     return w.to_bytes()
 
 
@@ -1880,7 +1883,7 @@ def build_fort_details_response(fort_id, lat, lng) -> bytes:
     name = _PLACED_NAMES.get(fort_id) or names[abs(hash(fort_id)) % len(names)]
     w = (pb.Writer()
          .string(1, fort_id)
-         .string(4, name))
+         .string(4, colortags.fort(name, gym, _w.gym_team(fort_id) if gym else 0)))
     # FortDetailsResponse.image_urls = 5 -- always at least one, same reason.
     w.string(5, _fort_image_url(fort_id))
     w.uint(9, 0 if gym else 1)
@@ -2845,7 +2848,8 @@ def build_evolve_response(uid) -> bytes:
 def build_nickname_response(uid, nickname) -> bytes:
     """NicknamePokemonResponse { result=1 } (1=SUCCESS)."""
     import world
-    world.update_caught(uid, nickname=nickname[:12])
+    # Stored with its short colour tags; only the visible letters count to 12.
+    world.update_caught(uid, nickname=colortags.clip(nickname, 12)[:80])
     return pb.Writer().uint(1, 1).to_bytes()
 
 
@@ -3712,7 +3716,7 @@ def build_gym_membership(m) -> bytes:
     import world
     lvl, _ = world.stats()
     profile = (pb.Writer()
-               .string(1, m.get("trainer") or "Trainer")
+               .string(1, colortags.trainer(m.get("trainer") or "Trainer"))
                .int_(2, lvl)
                .message(3, build_player_avatar())
                .to_bytes())
@@ -3760,7 +3764,7 @@ def build_gym_details_response(fort_id, lat, lng, now_ms) -> bytes:
         gs.message(2, build_gym_membership(m))
     w = (pb.Writer()
          .message(1, gs.to_bytes())
-         .string(2, name))
+         .string(2, colortags.fort(name, True, world.gym_team(fort_id))))
     w.string(3, _fort_image_url(fort_id))                 # urls = 3, never empty
     return (w
             .uint(4, 1)                                   # SUCCESS
