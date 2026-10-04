@@ -26,6 +26,22 @@ Game server : https://192.168.111.6:443
 DNS redirect: udp 192.168.111.6:53
 ```
 
+## No admin rights on the PC? Use USB via gnirehtet instead
+
+The Wi-Fi DNS method above needs inbound `udp/53` + `tcp/443`, which on Windows
+usually means an Administrator firewall rule. If you don't have admin,
+`--gnirehtet` reverse-tethers the phone through this PC over the USB cable and
+points the phone's DNS at us, so no firewall rule, no root and no phone app are
+needed:
+
+```
+py src/scripts/INSTALL_GNIREHTET.py     # one time
+py run.py --gnirehtet                    # every time
+```
+
+See `src/server/GNIREHTET.md` for the walkthrough. The Wi-Fi method stays the
+default and is unchanged.
+
 ## On the phone (unchanged)
 1. Install the patched APK (`pogo-0.29.0.metapatch.apk`) and the CA (`certs/ca.crt`) — one-time.
 2. Wi-Fi → your network → **Static** IP settings → set **DNS 1 = the IP above** and

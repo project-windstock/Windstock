@@ -1,21 +1,37 @@
-PYTHON LIBRARIES:
-s2sphere
-requests
-certifi
-customtkinter
-threading
-mariadb
-pathlib
-osmium
+Everything this project needs, in one place. The authoritative lists are
+requirements.txt (server) and requirements-assets.txt (asset tools); this file
+is the human-readable summary, and `py src/scripts/DOWNLOAD.py` installs from
+the same table.
 
-PATCHER:
-- Java installed
-- Node.js
-- npx
-- npm
+PYTHON LIBRARIES (server runtime -- pip install -r requirements.txt)
+    s2sphere          S2 geometry: level-15 cell ids, PokeStop/Gym placement
+    osmium            optional, only for tools/fetch_pois_pbf.py
+    mariadb           optional, only for the shared backend at the repo root
 
-apk-mitm (installed via npm, npm install apk-mitm)
+PYTHON LIBRARIES (asset tools -- pip install -r requirements-assets.txt)
+    UnityPy==1.25.2   PINNED. 1.x only: unitypy_fix is written against it, and
+                      2.x both breaks its API and reintroduces the save
+                      corruption that greys the screen on the phone.
+    Pillow            texture encode/decode, ImageTk for the editor canvas
+    numpy             the software 3D renderer and the mesh decoder
+    pycryptodome      AES-128-CBC for the bundle container
+    crcmod            crc32c, the per-bundle digest checksum
+    lz4               the packer the genuine 2016 bundles use
+    customtkinter     the desktop Asset Editor's widgets
 
+    Installing both sets at once:  py src/scripts/DOWNLOAD.py
 
-DATABASE:
-- MariaDB installed
+    Not dependencies, despite appearing in older copies of this file:
+    threading, pathlib, json, zlib, struct, html, mimetypes -- all standard
+    library. `threading` is not on PyPI at all, so `pip install threading`
+    fails; the `pathlib` backport on PyPI is a Python 2 leftover that can
+    shadow the standard-library module. requests/certifi are not imported
+    anywhere in this project.
+
+EXTERNAL TOOLS
+    Java, Node.js, npx, npm
+    apk-mitm         installed via npm:  npm install apk-mitm
+
+DATABASE
+    MariaDB          installed and running (only for the shared backend; the
+                     server itself uses SQLite and needs nothing)

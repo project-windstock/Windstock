@@ -1,0 +1,31 @@
+# Asset tools only (src/asset_tools): the Asset Editor, its CLI, and the
+# Data/ inspection tools.
+#
+#   pip install -r requirements-assets.txt
+#   py src/scripts/DOWNLOAD.py --group assets      # the same list
+#
+# The game server does not need any of these: that is the whole reason the asset
+# tools live in src/asset_tools/ instead of src/server/. Install them alongside
+# requirements.txt (which stays server-only) to run the editor.
+#
+# For the server plus the tools together: py src/scripts/DOWNLOAD.py
+
+# --- pinned -----------------------------------------------------------------
+# 1.25.x, and NOT 2.x. asset_tools/unitypy_fix.py is written against the 1.x
+# API, and the reason that module exists at all is a 1.x save bug: plain UnityPy
+# rewrites every MonoBehaviour's script_type_index to -1, which the client reads
+# as "splash screen, then grey, and the game never contacts the server". 2.x
+# changed the object model and the packer API, so a 2.x install fails the
+# selftest() in unitypy_fix and refuses to write anything. Install 2.x and the
+# editor looks like it works right up until it silently produces broken bundles.
+UnityPy==1.25.2
+
+# --- rest -------------------------------------------------------------------
+Pillow            # texture decode/encode, and ImageTk for the editor canvas
+numpy             # the software 3D renderer (render3d) and the mesh decoder (meshdata)
+pycryptodome      # AES-128-CBC for the bundle container: [ver|IV|ct|HMAC]
+crcmod            # crc32c, the checksum the asset digest advertises per bundle
+lz4               # the compression the genuine 2016 bundles use -- the editor
+                  # writes with save(packer="lz4") and unitypy_fix defaults to
+                  # the same packer, so a rebuild matches the shipped format
+customtkinter     # the desktop editor's widgets

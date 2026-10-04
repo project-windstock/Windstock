@@ -400,6 +400,15 @@ def _build_returns(reqs, username, log):
             returns.append(P.build_encounter_response(eid, int(time.time() * 1000)))
             from windstock.game import world
             s = world.get_spawn(eid)
+            if s:
+                # Shiny bookkeeping ONLY -- the response above is already built
+                # and nothing here changes a byte of it. Off by default, and no
+                # client without an agent ever asks /shiny/state, so this is a
+                # no-op on a stock APK.
+                from windstock.game import shiny
+                if shiny.enabled() and shiny.note_encounter(
+                        username, eid, s["pokemon_id"]):
+                    log(f"      *** SHINY #{s['pokemon_id']} (encounter {eid}) ***")
             log(f"      -> ENCOUNTER {eid} -> " +
                 (f"pokemon #{s['pokemon_id']} cp{s['cp']} (catch screen)"
                  if s else "NOT_FOUND (unknown spawn)"))
@@ -414,6 +423,10 @@ def _build_returns(reqs, username, log):
             b = P.throw_bonus(reticle, spin, hitpos)
             _cr = pb.decode(returns[-1])
             st = pb.get(_cr, 1, pb.WT_VARINT)
+            if st in (1, 3):                   # caught or fled: encounter over
+                from windstock.game import shiny
+                if shiny.enabled():
+                    shiny.end_encounter(username)
             # The Journal lists catches and Pokemon that ran away (not break-outs
             # or misses, which the encounter simply continues after).
             if _sp and st in (1, 3):

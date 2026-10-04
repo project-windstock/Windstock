@@ -16,6 +16,9 @@
 # ============================================================================
 *.apk
 *.idsig
+#  ...except the gnirehtet phone app the USB mode needs. It is a third-party
+#  tool (not Niantic material), so it is safe to ship with the server.
+!src/server/gnirehtet.apk
 extracted/
 tools/gm_2016.txt
 tools/global-metadata.patched.dat
@@ -63,6 +66,7 @@ server/*.spec
 
 # Local tooling config (not part of the project)
 .claude/
+.freebuff/
 
 # OS junk
 .DS_Store
@@ -110,3 +114,17 @@ server/photos/
 *.bak-*
 *.log
 sideloadlydaemon.log
+
+# ---------------------------------------------------------------------------
+#  Same rules for the src/ layout (the tree as it is now). Without these the
+#  151 shipped model bundles (67 MB of Niantic material) show up as untracked
+#  and are one `git add -A` away from being committed.
+# ---------------------------------------------------------------------------
+src/server/data/
+src/server/assets/
+src/server/assets_ios/
+src/server/assets_plain/
+src/server/photos/
+src/server/certs/
+src/server/data/extra_digest.json
+src/server/data/asset_backups/

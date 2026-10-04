@@ -1,8 +1,34 @@
+# The game server's own runtime. This is everything src/server imports that is
+# not in the Python standard library:
+#
+#   pip install -r requirements.txt
+#
+# or, equivalently, `py src/scripts/DOWNLOAD.py --group core`.
+#
+# Deliberately NOT listed here:
+#   * threading, pathlib, html, mimetypes, json, zlib, struct ... are all
+#     standard library. `threading` is not even on PyPI, so naming it made
+#     `pip install -r requirements.txt` fail outright; `pathlib` is worse,
+#     because a stale Python-2 backport of it DOES exist on PyPI and can
+#     shadow the standard-library module in site-packages.
+#   * requests / certifi -- imported nowhere in this project. The OpenStreetMap
+#     fetchers use urllib from the standard library.
+#   * The asset-editor stack (UnityPy, Pillow, numpy, pycryptodome, crcmod,
+#     lz4, customtkinter). The server never imports any of it -- that is the
+#     whole reason the tools live in src/asset_tools/ rather than src/server/ --
+#     so it is kept out to prove the point. See requirements-assets.txt.
+
+# --- required ---------------------------------------------------------------
+# S2 geometry: level-15 cell ids for the map, PokeStop/Gym placement, biomes.
 s2sphere
-requests
-certifi
-customtkinter
-threading
-mariadb
-pathlib
+
+# --- optional ---------------------------------------------------------------
+# Only for tools/fetch_pois_pbf.py, which parses real .osm.pbf extracts. The
+# server's OpenStreetMap mode does not need it; drop this line if you only ever
+# use procedural placement.
 osmium
+
+# Only for the shared MariaDB backend at the repository root (database.py). The
+# server uses SQLite on its own and needs nothing installed. database.py
+# imports it lazily and raises a clear error if it is missing.
+# mariadb

@@ -224,6 +224,35 @@ DEFAULTS = {
         "transfer_candy": 1,
         "faint_after_gym": True,
     },
+    "shiny": {
+        # Shiny models, served as pm####_s variant bundles and announced over
+        # GET /shiny/state for a client-side agent to act on.
+        #
+        # DEFAULT OFF, and it stays off for a stock client: this 0.29 build has
+        # no shiny concept of its own, and NOTHING in the spawn protos tells it
+        # to load a _s bundle. The server publishes the bundles through the
+        # normal asset digest (see assets.allow_replace and the Asset Editor),
+        # but the swap itself needs an agent on the phone. With no agent, turning
+        # this on costs a phone a few hundred KB of downloads and changes nothing
+        # on screen.
+        #
+        # The roll is hashed from the encounter id, not drawn at random, so a
+        # spawn cannot be rerolled by backing off and tapping again.
+        "enabled": False,
+        # Chance (0..1) that a wild spawn is shiny, at the plain base rate.
+        "rate": 0.0,
+        # Only species that actually have a pm####_s bundle can be shiny. Leave
+        # this on: without it a species with no model would still be judged
+        # shiny, and the agent would be asked to load a bundle that does not
+        # exist. The list is read from the assets' extra_digest.json, so it
+        # follows whatever the Asset Editor has built.
+        "require_model": True,
+        # How long one spawn's judgement is remembered. A spawn only lives
+        # minutes, so an hour is far longer than any roll has to survive --
+        # evicting by AGE rather than by count means a busy hour can never
+        # reroll a spawn that is still on the map.
+        "judged_ttl_s": 3600,
+    },
     "battles": {
         "attack_damage": 12,
         "special_damage": 30,
@@ -311,6 +340,45 @@ DEFAULTS = {
         #   "console"   = the old plain black console window, raw text only
         # Takes effect the NEXT time the server is started.
         "window": "windstock",
+    },
+    "assets": {
+        # Where the Asset Editor reads and writes the pm#### model bundles.
+        # "" = the copy shipped with the server (server/assets for Android,
+        # server/assets_ios for iOS). Point it somewhere else to keep your
+        # builds on a big disk, or on a second platform's set.
+        # The editor never edits a bundle in place: it writes a NEW bundle
+        # (pm0025_s, pm0025_i, ...) and leaves the original alone. Replacing a
+        # normal model is a separate, explicit choice with a backup.
+        "dir": "",
+        "dir_ios": "",
+        # Show the "replace the normal bundle" option in the editor at all.
+        # Off by default: it is the one action here that can change how an
+        # unmodded Pokemon looks for every player, and it backs the original
+        # up before writing.
+        "allow_replace": False,
+        # Per-species custom model: {"25": "pm0025_s", ...} -- Pokemon number ->
+        # the name of a bundle the Asset Editor built. Every spawn of that
+        # species then loads the custom bundle, on EVERY phone, with no agent
+        # and no change to the spawn protos.
+        #
+        # How it works, and why it is safe: the species keeps the asset_id its
+        # own item template already names, so the client still asks for the
+        # model it always asked for -- we just answer with the CUSTOM bundle's
+        # bytes, checksum, size and key under that id. This is the same
+        # mechanism `allow_replace` uses (same id, new checksum -> the phone
+        # re-downloads), except it never overwrites a shipped bundle, so it is
+        # reversible from the World Manager with one click.
+        #
+        # Only bundles listed in the assets' extra_digest.json may be used --
+        # a name that is not there is rejected rather than advertised, because
+        # an advertised bundle that then 404s reads to the client as a corrupt
+        # model. The values below are edited by the World Manager's
+        # "Custom models" panel; there is no reason to hand-edit them.
+        "model_overrides": {},
+        # Bumped on every change so the advertised digest timestamp moves past
+        # it. A phone caches the digest, so without this it would never notice
+        # that the checksum for a species changed. Not a setting to edit.
+        "model_overrides_ts": 0,
     },
 }
 
@@ -451,6 +519,14 @@ _README = [
     "   world_manager_port ... the http://127.0.0.1:PORT control panel",
     "   window ............... 'windstock' = the server window, 'console' = the",
     "                          old black console window (applies on next start)",
+    "",
+    "assets:  (the Asset Editor's model bundles)",
+    "   dir / dir_ios ........ where the pm#### bundles live. Empty = the copy",
+    "                          that shipped with the server. Both are set from",
+    "                          the editor's Settings panel.",
+    "   allow_replace ........ show the option that overwrites a NORMAL bundle",
+    "                          with your own build. Off by default; the editor",
+    "                          backs the original up before it writes.",
     "====================================================================",
 ]
 

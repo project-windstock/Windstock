@@ -9,9 +9,14 @@ World Manager and the interactive slash console.
       py run.py 203.0.113.7          # the IP the phone should be pointed at
       RUN_IP=203.0.113.7 py run.py
 
-Point the phone's Wi-Fi DNS at the IP this prints. Both 53/udp and 443/tcp must
-be reachable from the phone (open them in the firewall; on Windows low ports are
-fine without admin, but a firewall *allow* rule for inbound may be needed).
+  USB / gnirehtet (no Wi-Fi DNS change, no Administrator rights on this PC):
+      py run.py --gnirehtet          # reverse-tether over USB (see GNIREHTET.md)
+
+Default (Wi-Fi DNS) method: point the phone's Wi-Fi DNS at the IP this prints.
+Both 53/udp and 443/tcp must be reachable from the phone (open them in the
+firewall; on Windows low ports are fine without admin, but a firewall *allow*
+rule for inbound may be needed). `--gnirehtet` only ADDS the cable transport;
+the Wi-Fi DNS redirector is unchanged and still runs by default.
 
 Build a standalone .exe (no Python needed on the target):
       py -m PyInstaller --onefile --name pogo-server \
@@ -33,16 +38,52 @@ from windstock.cli.console import (  # noqa: E402
     start_console, show_banner, rule, kv, paint)
 from windstock.cli.logfile import _setup_logging  # noqa: E402
 from windstock.cli.network import detect_ip, _local_ips, _usable  # noqa: E402
+from windstock.cli import gnirehtet as gnirehtet_mode  # noqa: E402
 from windstock.cli.theme import (  # noqa: E402
     BOLD, DIM, YELLOW, MAGENTA, BRED, BGREEN, BYELLOW, BBLUE, BMAGENTA, BCYAN)
+
+
+def _parse_launcher_args(argv):
+    """Split the launcher's argv into (gnirehtet, ip).
+
+    Backwards compatible: a bare argument is still the IP the phone should be
+    pointed at (the Wi-Fi DNS method). ``--gnirehtet`` only ADDS the cable
+    transport -- it changes nothing about the default behaviour.
+    """
+    gnirehtet = False
+    ip = None
+    for arg in argv:
+        if arg == "--gnirehtet":
+            gnirehtet = True
+        elif arg in ("-h", "--help"):
+            _print_launcher_help()
+            raise SystemExit(0)
+        elif arg.startswith("-"):
+            print(paint(f"  unknown option {arg!r} -- ignored", DIM))
+        elif ip is None:
+            ip = arg
+        else:
+            print(paint(f"  ignoring extra argument {arg!r}", DIM))
+    return gnirehtet, ip
+
+
+def _print_launcher_help():
+    print()
+    print("  " + paint("Windstock launcher", BOLD, BBLUE))
+    print("    py run.py                     detect this PC's LAN IP (Wi-Fi DNS method)")
+    print("    py run.py 192.168.1.50        use this IP for the DNS redirect")
+    print("    py run.py --gnirehtet         reverse-tether over USB (no Wi-Fi DNS, no admin)")
+    print("    py src/scripts/INSTALL_GNIREHTET.py   get gnirehtet (one time)")
+    print()
 
 
 def main(ui_stream=None):
     """Run everything. Blocks in server.main(). A GUI window can call this on a
     background thread and pass its activity pane as ``ui_stream``."""
     _setup_logging(ui_stream)
-    redirect_ip = (sys.argv[1] if len(sys.argv) > 1
-                   else os.environ.get("RUN_IP") or detect_ip())
+    gnirehtet, arg_ip = _parse_launcher_args(sys.argv[1:])
+
+    redirect_ip = arg_ip or os.environ.get("RUN_IP") or detect_ip()
     # Show the alternatives. When the phone can't reach the server, the first
     # thing to check is whether this is even the right address for the network
     # the phone is on -- so make it impossible to miss.
@@ -100,6 +141,8 @@ def main(ui_stream=None):
     print(kv("Point the phone's DNS at", redirect_ip, BCYAN))
     print(kv("Game server", f"https://{redirect_ip}:{os.environ['PORT']}", BGREEN))
     print(kv("DNS redirect", f"udp {redirect_ip}:{os.environ['DNS_PORT']}", BYELLOW))
+    if gnirehtet:
+        print(kv("Reverse tether", "gnirehtet (USB cable)", BCYAN))
     rule("-")
     print("  " + paint("[ready]", BOLD, BGREEN)
           + paint("  Ctrl-C to stop  --  everything below is live server activity",
@@ -109,6 +152,18 @@ def main(ui_stream=None):
                   "(/log on|off toggles server-log.txt)", DIM))
     rule("=")
     print()
+
+    # gnirehtet (opt-in): reverse-tether the phone through this PC over the USB
+    # cable AND point the phone's DNS at us, so no Wi-Fi DNS change, no
+    # Administrator rights and no phone-side DNS app are needed. See GNIREHTET.md.
+    gn_state = None
+    if gnirehtet:
+        ca = os.path.join(os.environ["CERT_DIR"], "ca.crt")
+        gn_state = gnirehtet_mode.start(cert=ca, dns_ip=redirect_ip)
+        print("  " + paint("phone:", BOLD, BCYAN)
+              + paint(" accept the VPN prompt, install the CA, then start"
+                      " Pokemon GO", DIM))
+        rule("-")
 
     # DNS in a supervised background thread (auto-restarts if it ever dies)
     def dns_loop():
@@ -149,6 +204,9 @@ def main(ui_stream=None):
     except KeyboardInterrupt:
         print()
         print(paint("  shutting down.", DIM))
+    finally:
+        if gn_state:
+            gnirehtet_mode.teardown(gn_state)
 
 
 if __name__ == "__main__":

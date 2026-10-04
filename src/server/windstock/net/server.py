@@ -17,6 +17,7 @@ from windstock.web import helpcenter
 from windstock.web import website
 from windstock.game import rpc
 from windstock.game import shop
+from windstock.game import shiny
 from windstock.config import paths
 from windstock.net import sso
 
@@ -58,6 +59,13 @@ class Handler(BaseHTTPRequestHandler):
                 # by exact path, so it cannot shadow the game's own routes.
                 status, headers, out = website.handle(method, path, query,
                                                             self.headers, body, log)
+            elif path.startswith("/shiny"):
+                # The shiny models' server half: a client-side AGENT polls this
+                # for the verdict on whatever is on screen. Purely additive --
+                # no stock client ever requests it, and nothing here is on the
+                # game's RPC path. See game/shiny.py.
+                status, headers, out = shiny.handle(method, path, query,
+                                                    self.headers, body, log)
             elif path.startswith("/shop"):
                 # Checked before the host, so the Help Center can use the shop's
                 # item art from its own origin (and so the shop is reachable on

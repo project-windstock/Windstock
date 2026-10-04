@@ -7,9 +7,21 @@ installs the packages the server and tools need.
 
     py src/scripts/DOWNLOAD.py               # install everything
     py src/scripts/DOWNLOAD.py --group core  # just the server runtime
+    py src/scripts/DOWNLOAD.py --group assets  # the Asset Editor's stack
     py src/scripts/DOWNLOAD.py --list        # show what would be installed
-    py src/scripts/DOWNLOAD.py --check       # report what is already importable
+    py src/scripts/DOWNLOAD.py --check       # report what is already installed
     py src/scripts/DOWNLOAD.py --dry-run     # print the commands, run nothing
+
+Groups
+------
+    core     the game server's own runtime (s2sphere)
+    db       the shared MariaDB backend at the repository root
+    poi      OpenStreetMap data fetching (osmium)
+    patcher  the desktop APK patcher GUI (customtkinter)
+    assets   the Asset Editor: UnityPy==1.25.2, Pillow, numpy, pycryptodome,
+             crcmod, lz4. Deliberately NOT needed to run the server.
+    tools    protobuf / data-building tooling
+    all      every group above (the default)
 
 Elevation
 ---------
@@ -24,7 +36,7 @@ Windows No sudo exists, so it installs into the running interpreter.
 
 Environment
 -----------
-    DOWNLOAD_GROUP   default group (core|db|poi|tools|all)
+    DOWNLOAD_GROUP   default group (core|db|poi|patcher|assets|tools|all)
     NO_COLOR         set to any value to disable the coloured output
 """
 
@@ -41,8 +53,15 @@ IS_LINUX = sys.platform.startswith("linux")
 IS_MAC = sys.platform == "darwin"
 
 # --------------------------------------------------------------------------
-# Dependencies, grouped. Each entry is (pip name, import name to verify with).
-# Kept in one place so the installer, --list and --check can never disagree.
+# Dependencies, grouped. Each entry is (pip spec, import name to verify with).
+# The spec may pin a version ("UnityPy==1.25.2") -- a pin is not decoration:
+# importable() is true for the WRONG version too, so a pin is what lets
+# --check notice that the installed one does not match. Kept in one place so
+# the installer, --list and --check can never disagree.
+#
+# Nothing standard-library appears here on purpose: `threading` is not on PyPI
+# at all (naming it made `pip install -r requirements.txt` fail), and the
+# Python-2 `pathlib` backport that IS on PyPI can shadow the real one.
 # --------------------------------------------------------------------------
 GROUPS = {
     # The server itself refuses to start without this one.
@@ -53,9 +72,25 @@ GROUPS = {
     "poi": [("s2sphere", "s2sphere"), ("osmium", "osmium")],
     # The desktop APK patcher GUI (src/patcher/patcher.py).
     "patcher": [("customtkinter", "customtkinter")],
+    # The Asset Editor (src/asset_tools). The server imports NONE of this --
+    # that is the point of keeping the tools out of src/server.
+    #
+    # UnityPy is pinned to 1.25.2 and must stay on 1.x: unitypy_fix is written
+    # against that API, and its whole reason for existing is a 1.x save bug
+    # (plain UnityPy clears every MonoBehaviour's script_type_index, which greys
+    # the screen on the phone). 2.x changed the object model, and the editor
+    # would appear to work right up until it wrote broken bundles.
+    "assets": [
+        ("UnityPy==1.25.2", "UnityPy"),
+        ("Pillow", "PIL"),
+        ("numpy", "numpy"),
+        ("pycryptodome", "Crypto"),
+        ("crcmod", "crcmod"),
+        ("lz4", "lz4"),
+    ],
     # Asset extraction / protobuf tooling. Optional; only needed to build data.
     "tools": [
-        ("UnityPy", "UnityPy"),
+        ("UnityPy==1.25.2", "UnityPy"),
         ("Pillow", "PIL"),
         ("pycryptodome", "Crypto"),
         ("protobuf", "google.protobuf"),
@@ -153,6 +188,62 @@ def importable(module):
         return importlib.util.find_spec(module) is not None
     except (ImportError, ValueError, ModuleNotFoundError):
         return False
+
+
+def split_spec(spec):
+    """'UnityPy==1.25.2' -> ('UnityPy', '==', '1.25.2'); 'Pillow' -> ('Pillow', None, None)."""
+    for sep in ("==", ">=", "<=", "~=", ">", "<"):
+        if sep in spec:
+            name, _, want = spec.partition(sep)
+            return name.strip(), sep, want.strip()
+    return spec.strip(), None, None
+
+
+def installed_version(name):
+    """Installed version of a distribution, or None if it is not installed."""
+    try:
+        from importlib import metadata
+        return metadata.version(name)
+    except Exception:
+        return None
+
+
+def _version_ok(have, op, want):
+    """Does `have` satisfy `op want`?
+
+    `packaging` does this properly and is present in almost every environment,
+    so it is used when available. Without it, only '==' is decided (by exact
+    string) and a range falls back to "importable, version unverified" -- which
+    is the honest answer rather than a wrong one: comparing '0.2.5' >= '0.2'
+    as strings says False for a version that plainly satisfies it.
+    """
+    try:
+        from packaging.specifiers import SpecifierSet
+        return SpecifierSet(f"{op}{want}").contains(have or "", prereleases=True)
+    except Exception:
+        pass
+    if op == "==":
+        return have == want
+    return True                      # unverified, but not a failure
+
+
+def status(spec, mod):
+    """(satisfied, detail) for one entry.
+
+    A pin is checked against the INSTALLED version, not merely against
+    importability: UnityPy 2.x imports perfectly happily and is still wrong
+    here, so an import-only check would report the editor as ready when its
+    selftest() would refuse to write a single bundle.
+    """
+    name, op, want = split_spec(spec)
+    if not importable(mod):
+        return False, "not installed"
+    have = installed_version(name)
+    if op is None:
+        return True, have or "importable"
+    if _version_ok(have, op, want):
+        return True, have
+    return False, f"have {have or 'unknown'}, need {op}{want}"
 
 
 def venv_python(path):
@@ -295,26 +386,29 @@ def main(argv=None):
 
     if args.list:
         header(f"Packages in group '{args.group}'")
-        for pkg, mod in packages:
-            mark = c("[have]", BGREEN) if importable(mod) else c("[need]", BYELLOW)
-            print(f"  {mark}  {pkg:<16} (import: {mod})")
+        for spec, mod in packages:
+            good, detail = status(spec, mod)
+            mark = c("[have]", BGREEN) if good else c("[need]", BYELLOW)
+            print(f"  {mark}  {spec:<18} (import: {mod}, {detail})")
         print()
         return 0
 
     if args.check:
         header("Dependency check")
         missing = []
-        for pkg, mod in packages:
-            if importable(mod):
-                ok(f"{pkg:<16} importable as {mod}")
+        for spec, mod in packages:
+            good, detail = status(spec, mod)
+            if good:
+                ok(f"{spec:<18} {detail}")
             else:
-                fail(f"{pkg:<16} MISSING (import: {mod})")
-                missing.append(pkg)
+                fail(f"{spec:<18} MISSING ({detail}, import: {mod})")
+                missing.append(split_spec(spec)[0])
         print()
         if missing:
-            warn(f"{len(missing)} missing -- run this script to install them")
+            warn(f"{len(missing)} missing or the wrong version -- run this "
+                 "script to install them")
             return 1
-        ok("all dependencies are present")
+        ok("all dependencies are present, at the right versions")
         return 0
 
     # Decide which interpreter (and whether to elevate).
@@ -339,13 +433,15 @@ def main(argv=None):
     if not args.dry_run and not ensure_pip(python_exe, prefix):
         return 1
 
-    # Only pass packages that aren't already importable unless forced/upgrading.
-    todo = [pkg for pkg, mod in packages if args.force or args.upgrade
-            or not importable(mod)]
+    # Pass a package to pip when it is missing, at the WRONG version, or when
+    # upgrading was asked for. A pin is always re-asserted: that is the whole
+    # point of pinning, since the wrong version still imports.
+    todo = [spec for spec, mod in packages
+            if args.force or args.upgrade or not status(spec, mod)[0]]
 
     header(f"Installing {len(todo)} of {len(packages)} packages")
     if not todo:
-        ok("everything is already importable; nothing to do")
+        ok("everything is already installed at the right versions")
         print()
         return 0
 
@@ -360,10 +456,10 @@ def main(argv=None):
         return 0
 
     header("Verifying")
-    missing = [pkg for pkg, mod in packages if not importable(mod)]
-    for pkg, mod in packages:
-        (ok if importable(mod) else fail)(
-            f"{pkg:<16} {'importable' if importable(mod) else 'STILL MISSING'}")
+    missing = [spec for spec, mod in packages if not status(spec, mod)[0]]
+    for spec, mod in packages:
+        good, detail = status(spec, mod)
+        (ok if good else fail)(f"{spec:<18} {detail if good else 'STILL WRONG'}")
     print()
     if missing:
         warn("some packages need a new shell/session before Python sees them "

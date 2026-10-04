@@ -179,6 +179,30 @@ at your feet as a wild Pokemon you can catch — you have 10 minutes.</div>
 always drop; berries and the specials are rolled. Chance 0 rows (Master Ball, Bluk/
 Nanab/Wepear/Pinap) are switched off until you raise their chance.</div>
 
+<h2>Custom models</h2>
+<div class="hint">Point one species at a bundle you built with the Asset Editor and
+<b>every spawn of that species loads it</b> &mdash; for every player, on a stock
+client, with no agent and no APK change. A shiny, an icy, any recolour you drew:
+build <code>pm0025_s</code> and pick it here. Clearing it puts the normal model
+straight back.</div>
+<div class="bar">
+  <select id="mod-plat" onchange="modelsLoad()">
+    <option value="android">Android models</option>
+    <option value="ios">iOS models</option>
+  </select>
+  <span class="inline-label">Pokemon</span>
+  <select id="mod-pid"></select>
+  <span class="inline-label">use bundle</span>
+  <select id="mod-bundle"></select>
+  <button class="go" style="width:auto;padding:10px 20px" onclick="modelApply()">Use it</button>
+</div>
+<div class="list" id="mod-list"></div>
+<div class="hint" id="modhint">Applies the next time the game starts on each phone: the
+digest entry keeps the species' own asset id and gains the custom bundle's checksum, so
+the phone re-downloads that one model. Only bundles you have actually built are
+offered &mdash; one that is advertised but missing is read by the client as a
+corrupt model.</div>
+
 <h2>Nominations</h2>
 <div class="hint">Added by players from the in-game Help Center
 (Settings &rarr; support). These go straight into the world &mdash; one per player
@@ -401,6 +425,70 @@ async function giveDust(){
     kind:'stardust', count:+$('givedust').value}));
 }
 
+/* ---- per-species custom models ---- */
+let MODELS={bundles:{android:[],ios:[]},overrides:{},dirs_present:{},asset_dir:{}};
+function modelsHint(r){
+  const h=$('modhint');
+  h.textContent=(r.ok?'\u2713 ':'\u2717 ')+(r.message||r.error||'');
+  h.style.color = r.ok ? '#7fd1a6' : '#ff9a9a';
+}
+function modelsPaint(){
+  const plat=$('mod-plat').value;
+  const sel=$('mod-bundle'); const keep=sel.value; sel.innerHTML='';
+  const none=document.createElement('option');
+  none.value=''; none.textContent='(normal model \u2014 clears the override)';
+  sel.appendChild(none);
+  (MODELS.bundles[plat]||[]).forEach(b=>{
+    const o=document.createElement('option');
+    o.value=b.name;
+    o.textContent=b.name+(b.pokemon_id?('   (#'+b.pokemon_id+')'):'')
+      +((MODELS.overrides||{})[''+b.pokemon_id]===b.name?'   \u2713 in use':'');
+    sel.appendChild(o);
+  });
+  if(keep) sel.value=keep;
+  const box=$('mod-list'); box.innerHTML='';
+  const keys=Object.keys(MODELS.overrides||{});
+  if(!keys.length){
+    box.innerHTML='<div class="empty">No custom models in use \u2014 every Pokemon looks normal.</div>';
+  }
+  keys.forEach(k=>{
+    const d=document.createElement('div'); d.className='row';
+    d.innerHTML='<span class="tag">'+k+'</span>'
+      +'<span class="t"><b>'+(DEX[+k]||('Pokemon #'+k))+'</b></span>'
+      +'<span class="hint" style="align-self:center">every spawn uses <code>'
+      +MODELS.overrides[k]+'</code></span>';
+    const x=document.createElement('span'); x.className='x';
+    x.textContent='use the normal model';
+    x.onclick=async function(){
+      modelsHint(await post('/api/model',{pokemon_id:+k,bundle:''}));
+      await modelsLoad();
+    };
+    d.appendChild(x); box.appendChild(d);
+  });
+  if(MODELS.dirs_present && MODELS.dirs_present[plat]===false){
+    $('modhint').textContent='No assets folder for '+plat+' ('
+      +(MODELS.asset_dir[plat]||'?')+') \u2014 build a bundle in the Asset Editor first.';
+    $('modhint').style.color='#ff9a9a';
+  }
+}
+async function modelsLoad(){
+  MODELS=await (await fetch('/api/models')).json();
+  const sel=$('mod-pid');
+  if(!sel.dataset.done){
+    DEX.forEach((n,i)=>{ if(!i) return;
+      const o=document.createElement('option'); o.value=i;
+      o.textContent='#'+i+' '+n; sel.appendChild(o); });
+    sel.dataset.done='1';
+  }
+  modelsPaint();
+}
+async function modelApply(){
+  const r=await post('/api/model',{pokemon_id:+$('mod-pid').value,
+    bundle:$('mod-bundle').value});
+  modelsHint(r);
+  if(r.ok) await modelsLoad();
+}
+
 /* ---- PokeStop loot table editor ---- */
 const LOOT_POOL=[[1,'Poke Ball'],[2,'Great Ball'],[3,'Ultra Ball'],[4,'Master Ball'],
   [101,'Potion'],[102,'Super Potion'],[103,'Hyper Potion'],[104,'Max Potion'],
@@ -496,6 +584,7 @@ async function load(){
     lootPaint(j.loot); $('loot-rows').dataset.done='1';
     $('loot-min').value=j.loot_min; $('loot-max').value=j.loot_max;
   }
+  if(!$('mod-list').dataset.done){ $('mod-list').dataset.done='1'; modelsLoad(); }
   if(!$('presets').dataset.done){
     (j.presets||[]).forEach(n=>{const b=document.createElement('button');
       b.textContent=n;b.onclick=()=>preset(n);$('presets').appendChild(b);});
@@ -699,6 +788,31 @@ class _Handler(BaseHTTPRequestHandler):
                                "loot_min": CFG.get("pokestops", "min_items_per_spin"),
                                "loot_max": CFG.get("pokestops", "max_items_per_spin"),
                                "player": {"lat": lat, "lng": lng}})
+        if p == "/api/models":
+            # The "Custom models" panel: which custom bundles the Asset Editor
+            # has built, and which species is currently using one. Read straight
+            # from the assets' extra_digest.json, so a bundle built while the
+            # server is running shows up here with no restart.
+            import re
+            from windstock.game import protocol as _P
+            from windstock.config import settings as _CFG
+            have = {"android": [], "ios": []}
+            for plat in ("android", "ios"):
+                extra = _P._extra_digest(plat)
+                for name in sorted(extra):
+                    m = re.fullmatch(r"pm(\d{4})", name)
+                    have[plat].append({
+                        "name": name,
+                        "pokemon_id": int(m.group(1)) if m else None,
+                        "size": int(extra[name]["size"])})
+            return self._json({
+                "bundles": have,
+                "overrides": {str(k): v for k, v
+                              in (_CFG.get("assets", "model_overrides") or {}).items()},
+                "asset_dir": {p: _P.assets_dir(p) for p in ("android", "ios")},
+                "dirs_present": {p: os.path.isdir(_P.assets_dir(p))
+                                 for p in ("android", "ios")},
+            })
         if p == "/api/logs":
             # Live tail of server-log.txt for the "Server log" panel. Only the
             # tail is read, so a multi-megabyte log costs the same as a small one.
@@ -905,6 +1019,56 @@ class _Handler(BaseHTTPRequestHandler):
                            "species_list", "single_species", "min_cp", "max_cp",                               "spawn_mode", "force_biome", "shiny_rate",
                            "allow_overcap")
                 return self._json(EV.save({k: d[k] for k in allowed if k in d}))
+            if p == "/api/model":
+                # Point one species at a custom bundle (or clear it). The
+                # species keeps the asset_id its own item template names, so
+                # every phone resolves it exactly as before and simply gets the
+                # custom bytes -- no template, proto or game-master change, and
+                # nothing to undo but this setting.
+                import time as _time
+                from windstock.game import protocol as _P
+                from windstock.config import settings as _CFG
+                pid = d.get("pokemon_id")
+                bundle = (d.get("bundle") or "").strip()
+                try:
+                    pid = int(pid)
+                except (TypeError, ValueError):
+                    return self._json({"ok": False, "message": "pick a Pokemon"})
+                if not (1 <= pid <= 151):
+                    return self._json({"ok": False,
+                                       "message": f"#{pid} is not a Kanto number"})
+                current = dict(_CFG.get("assets", "model_overrides") or {})
+                if not bundle:                          # "" clears the override
+                    if str(pid) not in current:
+                        return self._json({"ok": False,
+                                           "message": f"#{pid} has no custom model"})
+                    current.pop(str(pid), None)
+                    msg = f"#{pid} back to its normal model"
+                else:
+                    base = "pm%04d" % pid
+                    known = set()
+                    for plat in ("android", "ios"):
+                        known |= set(_P._extra_digest(plat))
+                    if bundle not in known:
+                        # Never advertise a bundle that is not on disk: the
+                        # client would download-fail and treat the model as
+                        # corrupt, which is worse than not applying.
+                        return self._json({"ok": False, "message":
+                                           f"{bundle} is not a bundle you have built "
+                                           f"(not in extra_digest.json)"})
+                    if bundle == base:
+                        return self._json({"ok": False, "message":
+                                           "that IS the normal bundle -- pick a "
+                                           "variant like " + base + "_s"})
+                    current[str(pid)] = bundle
+                    msg = f"every #{pid} now loads {bundle}"
+                _CFG.set("assets", "model_overrides", current)
+                # Microseconds, like every other version in the digest, so the
+                # advertised timestamp moves past the one a phone has cached.
+                _CFG.set("assets", "model_overrides_ts", int(_time.time() * 1_000_000))
+                _P.clear_digest_cache()      # else the merged view stays stale
+                return self._json({"ok": True, "message": msg,
+                                   "overrides": current})
             if p == "/api/logs/clear":
                 from windstock.cli import logfile
                 return self._json({"ok": logfile.clear_log()})

@@ -95,8 +95,8 @@ Welcome back to the wilderness of 2016—free from the boardrooms, free from the
   [Reverse engineering](#-reverse-engineering-the-client)); no root, user-installed CA.
 - 🤖 **Android (0.35):** also supported, through an APK patcher
 
-Step-by-step device guides live in `src/server/DEVICE_SETUP.md`, `src/server/RUN.md` and
-`src/server/VPN.md`.
+Step-by-step device guides live in `src/server/DEVICE_SETUP.md`, `src/server/RUN.md`,
+`src/server/GNIREHTET.md` and `src/server/VPN.md`.
 
 ## ⚠️ Known limitations
 
@@ -204,6 +204,35 @@ py -m PyInstaller "Start-Pokemon-GO-Server.spec" --distpath ../../RELEASE --noco
    mode set to **GPS only** (not High accuracy).
 4. Start the game and log in with any name.
 
+### 🔌 On the phone over USB — no Wi-Fi DNS, no admin (`--gnirehtet`)
+
+If you can't point the phone's Wi-Fi DNS at this PC — a school or work machine
+with a locked firewall, or a router you don't control — the launcher can
+reverse-tether the phone through the **USB cable** instead. The phone's internet
+(including DNS) comes down the cable from this PC, so nothing needs configuring
+on the phone and **no Administrator rights** are required. Full walkthrough:
+`src/server/GNIREHTET.md`.
+
+```bash
+py src/scripts/INSTALL_GNIREHTET.py   # one time: fetch gnirehtet (checksum-verified)
+py __main__.py --gnirehtet            # start the server + USB reverse tethering
+```
+
+1. Same phone prep as above — patched 0.29 APK, and the CA (`src/server/certs/ca.crt`)
+   installed as a **user** certificate.
+2. Plug the phone in, turn on **USB debugging**, and tap **Allow** on the PC prompt.
+3. Accept the **VPN prompt** on the phone the first time — a small key icon then
+   appears in the status bar.
+4. Keep **any network that has internet** connected on the phone (Wi-Fi or mobile
+   data). With none connected, Android reports "offline" and the game shows
+   *No Internet connectivity* — the game traffic itself still travels over the
+   cable. Do **not** use Airplane mode.
+
+`--gnirehtet` only **adds** the cable transport; the Wi-Fi DNS redirector stays on
+and unchanged. Works on **Windows and Linux** (on Linux install/run with
+`python3`; the phone app ships in `src/server/gnirehtet.apk`). Combine it with a
+fixed address as `py __main__.py --gnirehtet 192.168.1.50`.
+
 ### 🎚️ Tuning
 
 Spawn rates, catch odds, gym payouts, the defender bonus and more live in
@@ -218,11 +247,16 @@ Beyond the server itself, the repo ships the tooling the project was built with.
 ### 📦 `src/scripts/DOWNLOAD.py` — dependency installer
 
 One command, every OS. Finds the right Python, bootstraps pip if needed, and installs the packages
-the server and tools need. Groups: `core`, `db`, `poi`, `tools`, `patcher`, `all`.
+the server and tools need. Groups: `core`, `db`, `poi`, `patcher`, `assets`, `tools`, `all`.
+
+`--check` compares the **installed version** against any pin, not just importability — so a
+UnityPy 2.x install is reported as wrong even though it imports fine, which is the point:
+`asset_tools/unitypy_fix.py` only works on 1.x (see `requirements-assets.txt`).
 
 ```bash
-py src/scripts/DOWNLOAD.py --group core   # server runtime only
-py src/scripts/DOWNLOAD.py --check        # report what's missing, install nothing
+py src/scripts/DOWNLOAD.py --group core    # server runtime only
+py src/scripts/DOWNLOAD.py --group assets  # the Asset Editor (UnityPy==1.25.2, lz4, ...)
+py src/scripts/DOWNLOAD.py --check         # report what's missing, install nothing
 ```
 
 ### 🩹 `src/patcher/patcher.py` — APK patcher

@@ -7,7 +7,9 @@ client's logged layout (see rpc.py request dumps) ever disagrees, it's a
 one-line fix. The request side is parsed generically (pb.decode), so only the
 RESPONSE builders below depend on these numbers being right.
 """
+import json
 import os
+import struct
 import time
 from windstock.game import pb
 from windstock.game import cpdata
@@ -620,6 +622,13 @@ def build_asset_digest_entry(asset_id, bundle_name, version=1, checksum=0,
                              size=1, key=b"") -> bytes:
     # AssetDigestEntry { asset_id=1, bundle_name=2, version=3 int64,
     #   checksum=4 fixed32, size=5 int32, key=6 bytes }
+    # asset_id arrives as raw protobuf bytes from a parsed entry and as str from
+    # extra_digest.json; both are the same field on the wire, so accept either
+    # rather than making every caller remember which it has.
+    if isinstance(asset_id, bytes):
+        asset_id = asset_id.decode("utf-8", "replace")
+    if isinstance(bundle_name, bytes):
+        bundle_name = bundle_name.decode("utf-8", "replace")
     w = (pb.Writer()
          .string(1, asset_id)
          .string(2, bundle_name)
@@ -702,10 +711,27 @@ def parse_client_version(msg: bytes) -> int:
 
 
 def assets_dir(platform="android"):
-    """Bundle directory for a platform, falling back to android if the iOS set
-    isn't installed (so a half-populated tree degrades to the old behaviour)."""
-    if platform == "ios" and os.path.isdir(ASSETS_DIR_IOS):
-        return ASSETS_DIR_IOS
+    """Bundle directory for a platform.
+
+    Order: the path the user set in settings.json (assets.dir / assets.dir_ios),
+    then the copy shipped with the server, then -- for iOS only -- android's, so
+    a half-populated tree degrades to the old behaviour instead of finding
+    nothing. The setting exists because a full set of 151 bundles plus variants
+    is ~70 MB and some people keep it on another disk; a server that has been
+    pointed at a custom directory and then has that directory renamed should say
+    so rather than quietly serving 404s, so the editor's Settings panel shows
+    which path is in force.
+    """
+    if platform == "ios":
+        custom = _cfg.get("assets", "dir_ios")
+        if custom and os.path.isdir(custom):
+            return custom
+        if os.path.isdir(ASSETS_DIR_IOS):
+            return ASSETS_DIR_IOS
+        return ASSETS_DIR
+    custom = _cfg.get("assets", "dir")
+    if custom and os.path.isdir(custom):
+        return custom
     return ASSETS_DIR
 
 # Photos for your PokeStops/Gyms: drop image files here and reference them by
@@ -727,9 +753,13 @@ except OSError:
 # i.e. it always runs DecodeAndroid and rejects anything that isn't the encrypted
 # [ver|IV|ct|HMAC] container. Encrypted is the only format it accepts -- default OFF.
 PLAIN_ASSETS = os.environ.get("PLAIN_ASSETS", "0") == "1"
-# CRC_FIX=1 (default): advertise CRC32(decrypted bundle) as the digest checksum
-# instead of the genuine (unidentified-algorithm) value. Set 0 to pass through.
-CRC_FIX = os.environ.get("CRC_FIX", "0") == "1"   # 1 = advertise CRC32(decrypted)
+# CRC_FIX=1: advertise CRC32(PLAINTEXT bundle) as the digest checksum instead of
+# the genuine value. This is NOT the real algorithm and stays off. The genuine
+# field 4 is CRC-32C of the ENCRYPTED file -- verified equal on all 151 shipped
+# Android entries -- so pass-through already publishes the right number. The
+# plaintext CRC32 idea came from an old misreading that left the field looking
+# unset; it was never correct, and advertising it did not make models render.
+CRC_FIX = os.environ.get("CRC_FIX", "0") == "1"   # 1 = advertise CRC32(plaintext)
 PLAIN_DIR = os.path.join(_HERE, "assets_plain")
 _PLAIN_MANIFEST = None
 _REAL_DIGEST = {}          # platform -> {bundle_name: entry}
@@ -750,6 +780,8 @@ def _plain_manifest():
 
 _RAW_DIGEST_BYTES = {}
 _DIGEST_TS = {}
+_EXTRA_DIGEST = {}          # platform -> (mtime, {bundle_name: entry})
+EXTRA_DIGEST_FILE = "extra_digest.json"
 
 
 def _raw_digest_bytes(platform="android"):
@@ -763,6 +795,101 @@ def _raw_digest_bytes(platform="android"):
     return _RAW_DIGEST_BYTES[platform]
 
 
+def _extra_digest(platform="android"):
+    """Bundles the Asset Editor built itself -- pm0025_s, pm0025_i, ... -- from
+    `<assets>/extra_digest.json`, as {bundle_name: entry}.
+
+    `asset_digest` itself is genuine, shipped inside the APK, and must never be
+    rewritten: the client keys its cache off its timestamp and its entries, and
+    every other tool here reads it as ground truth. So a bundle we build is
+    registered in a side file and appended to the genuine digest only here, at
+    the moment we answer GET_ASSET_DIGEST.
+
+    Re-read whenever the file's mtime changes, so a build finished while the
+    server is running is picked up with no restart, and the digest cache is
+    dropped with it so the merged view cannot go stale.
+    """
+    adir = assets_dir(platform)
+    path = os.path.join(adir, EXTRA_DIGEST_FILE)
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        hit = _EXTRA_DIGEST.get(platform)
+        _EXTRA_DIGEST[platform] = (None, {})
+        return {}
+    hit = _EXTRA_DIGEST.get(platform)
+    if hit and hit[0] == mt:
+        return hit[1]
+    out = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        for name, e in raw.items():
+            # An entry without its bundle on disk would be advertised and then
+            # 404 on download, which the client treats as a corrupt model.
+            if not os.path.isfile(os.path.join(adir, name)):
+                continue
+            asset_id = e["asset_id"]
+            if isinstance(asset_id, bytes):
+                asset_id = asset_id.decode("utf-8", "replace")
+            out[name] = {"asset_id": asset_id,
+                         "version": int(e["version"]),
+                         "checksum": int(e.get("checksum", 0)),
+                         "size": int(e["size"]),
+                         "key": bytes.fromhex(e["key"])}
+    except (OSError, ValueError, KeyError, TypeError) as ex:
+        print(f"!! {path} could not be read ({ex}) -- our own bundles will not "
+              f"be advertised until it is fixed")
+        out = {}
+    _EXTRA_DIGEST[platform] = (mt, out)
+    _REAL_DIGEST.pop(platform, None)      # the merged view must pick this up
+    _DIGEST_RESPONSE.pop(platform, None)
+    return out
+
+
+def clear_digest_cache(platform=None):
+    """Drop the merged digest view so the next question re-reads settings.
+
+    The World Manager's "Custom models" panel calls this after a change: the
+    override lives in settings.json, and both the parsed digest and the built
+    response are cached, so without this a phone would keep being offered the
+    old checksum until the server restarted.
+    """
+    for plat in ((platform,) if platform else ("android", "ios")):
+        _REAL_DIGEST.pop(plat, None)
+        _DIGEST_RESPONSE.pop(plat, None)
+
+
+def _model_override_map(platform="android"):
+    """{base bundle name: custom bundle name} for the per-species overrides.
+
+    Read from settings (`assets.model_overrides`, a {pokemon number: bundle
+    name} map the World Manager writes) and resolved against THIS platform's
+    extra_digest.json. A name that is not a bundle we actually built is dropped
+    here rather than advertised: an entry the client then fails to download
+    reads to it as a corrupt model, which is a worse outcome than the override
+    quietly not applying.
+
+    Deliberately does not consult the genuine digest, so it can be called from
+    inside `_load_real_digest` without recursing. Whether the BASE bundle is
+    really shipped is checked by the caller, which is already iterating it.
+    """
+    out = {}
+    raw = _cfg.get("assets", "model_overrides") or {}
+    if not isinstance(raw, dict):
+        return out
+    extras = _extra_digest(platform)
+    for pid, name in raw.items():
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(name, str) or not name or name not in extras:
+            continue
+        out["pm%04d" % pid] = name
+    return out
+
+
 def digest_timestamp(platform="android"):
     """The digest's OWN timestamp (field 2). DOWNLOAD_REMOTE_CONFIG_VERSION must
     advertise exactly this value as asset_digest_timestamp_ms, or the client never
@@ -773,18 +900,46 @@ def digest_timestamp(platform="android"):
 
     Per platform: the two digests carry DIFFERENT timestamps (android
     1467338276561000, ios 1467338277329000), so the remote-config response has
-    to quote the one matching the digest that client was served."""
+    to quote the one matching the digest that client was served.
+
+    When we have built bundles of our own, the timestamp is moved past the
+    newest of them. A phone that already cached the older digest would otherwise
+    see nothing new, never re-request it, and keep the models it has -- which is
+    the whole reason `extra_digest.json` is documented as "no restart needed".
+    """
     if platform not in _DIGEST_TS:
         raw = _raw_digest_bytes(platform)
         _DIGEST_TS[platform] = (pb.get(pb.decode(raw), 2, pb.WT_VARINT) or 0) if raw else 0
-    return _DIGEST_TS[platform]
+    newest = _DIGEST_TS[platform]
+    extras = _extra_digest(platform)
+    if extras:
+        newest = max(newest, max(int(e["version"]) for e in extras.values()))
+    # A per-species model override changes the checksum a phone has for a
+    # bundle it has ALREADY cached, without touching any file. The digest
+    # timestamp is the only thing that reliably makes it look again, so an
+    # override has to push it forward -- the World Manager bumps
+    # assets.model_overrides_ts (in MICROSECONDS, like every other version
+    # here, so the two are directly comparable) on every change.
+    #
+    # Compared as a MAX against everything else rather than returned from
+    # inside the branch above: flipping an override on is always NEWER than
+    # the build it points at, so it is the one that has to win.
+    if _model_override_map(platform):
+        newest = max(newest, int(_cfg.get("assets", "model_overrides_ts") or 0))
+    return newest
 
 
 def _load_real_digest(platform="android"):
     """Parse assets/asset_digest -> {bundle_name: {asset_id, version, checksum,
     size, key}}. Fields per the 0.29 AssetDigestEntry contract: asset_id=1,
-    bundle_name=2, version=3, checksum=4 (fixed32 CRC32 of the DECRYPTED bundle),
-    size=5 (encrypted size on the wire), key=6 (16-byte AES key)."""
+    bundle_name=2, version=3, checksum=4 (fixed32), size=5 (encrypted size on the
+    wire), key=6 (16-byte AES key).
+
+    Bundles the Asset Editor built are merged in on top (see `_extra_digest`).
+    They win on a name clash, because a rebuilt pm0025_s replaces the previous
+    build of pm0025_s and the entry on disk is the truth.
+    """
+    _extra_digest(platform)                   # refresh the cache if it changed
     if platform in _REAL_DIGEST:
         return _REAL_DIGEST[platform]
     out = _REAL_DIGEST[platform] = {}
@@ -810,6 +965,22 @@ def _load_real_digest(platform="android"):
             "size":     pb.get(e, 5, pb.WT_VARINT) or 0,
             "key":      key if isinstance(key, bytes) else b"",
         }
+    out.update(_extra_digest(platform))
+
+    # Per-species model overrides. The species keeps the asset_id and
+    # bundle_name the client's own item template already points at -- that is
+    # the whole trick, and the reason no template or proto has to change --
+    # but the checksum, size and key become the CUSTOM bundle's, so the client
+    # downloads and validates the custom bytes under the id it asked for. Its
+    # cached copy no longer matches, so it re-downloads; nothing else changes.
+    # `file` records which file to actually serve (see bundle_path).
+    for base, custom in _model_override_map(platform).items():
+        m, c = out.get(base), out.get(custom)
+        if not m or not c or custom == base:
+            continue                      # base not shipped, or a no-op override
+        out[base] = dict(m, version=max(int(m["version"]), int(c["version"])),
+                         checksum=c["checksum"], size=c["size"], key=c["key"],
+                         file=custom)
     return out
 
 
@@ -835,12 +1006,12 @@ def _our_bundles(platform="android"):
                 continue
             checksum = m["checksum"]
             if CRC_FIX:
-                # The client's load path is decrypt -> ValidateBundle(CRC32) -> create.
-                # The genuine digest checksum is NOT zlib-CRC32 of the decrypted bundle
-                # (verified: no standard CRC variant matches), so if the client computes
-                # a plain CRC32 it will call every bundle corrupt and silently drop the
-                # model -- which is exactly what we see (bundle cached on device, nothing
-                # rendered). Advertise the CRC32 we actually measure instead.
+                # Deliberately wrong, kept only so the old experiment stays
+                # reproducible. m["checksum"] is the genuine field 4, which is
+                # CRC-32C of the encrypted file (151/151 on the shipped Android
+                # set) and is passed through unchanged by default. Overwriting it
+                # with CRC32(plaintext) does not make models render; it just
+                # publishes a number the client does not check.
                 pc = _plain_manifest().get(fn)
                 if pc:
                     checksum = pc["crc32"]
@@ -860,20 +1031,29 @@ def bundle_path(asset_id):
     id alone says which set the client is asking for. Search both and serve the
     match -- that's what lets an iPhone and an Android phone play at the same
     time against one server."""
+    want = asset_id.decode("utf-8", "replace") if isinstance(asset_id, bytes) \
+        else str(asset_id)
     for platform in ("android", "ios"):
         adir = assets_dir(platform)
         if platform == "ios" and adir == ASSETS_DIR:
             continue                              # ios set not installed
         for bn, m in _load_real_digest(platform).items():
-            if m["asset_id"] == asset_id:
-                if PLAIN_ASSETS and platform == "android":
-                    p = os.path.join(PLAIN_DIR, bn)
+            # Entries are str; the id off the wire is bytes, so compare text.
+            if m["asset_id"] == want:
+                # `file` is set only for a species under a per-species model
+                # override: the id asked for is the STOCK one, but the bytes
+                # that satisfy the checksum we advertised are the custom
+                # bundle's. Serving the stock file here would fail the client's
+                # CRC check and it would drop the model.
+                target = m.get("file") or bn
+                if PLAIN_ASSETS and platform == "android" and not m.get("file"):
+                    p = os.path.join(PLAIN_DIR, target)
                     if os.path.isfile(p):
                         return p
-                p = os.path.join(adir, bn)
+                p = os.path.join(adir, target)
                 if os.path.isfile(p):
                     return p
-    name = os.path.basename(asset_id)            # fall back to a bare 'pm####'
+    name = os.path.basename(want)            # fall back to a bare 'pm####'
     if PLAIN_ASSETS:
         p = os.path.join(PLAIN_DIR, name)
         if os.path.isfile(p):
@@ -882,19 +1062,152 @@ def bundle_path(asset_id):
     return p if os.path.isfile(p) else None
 
 
+def _rebuild_digest(raw, extras, timestamp, platform="android"):
+    """
+    The genuine digest, our own bundles appended, and a fresh timestamp.
+
+    The genuine bytes are kept VERBATIM for every entry: the client keys its
+    cache off those entries, and re-encoding them from the parsed protobuf would
+    risk changing an asset_id or a key for no benefit. Four things are added:
+
+      * one field-1 AssetDigestEntry per bundle from extra_digest.json
+      * field 2, the timestamp, moved past the newest bundle we built
+      * field 3, result = SUCCESS, which this 0.29 build wants
+      * a REWRITTEN entry for each species under a per-species model override,
+        because that one is not verbatim by design (see _model_override_map)
+
+    Field 2 already exists in the genuine bytes, and a repeated field 2 would
+    mean "last one wins" for a parser that takes the first -- so the original is
+    dropped and re-emitted rather than appended next to. `check_digest_response`
+    is the assertion that this round-trips.
+    """
+    view = _load_real_digest(platform)
+    out = []
+    for f in pb.decode(raw):
+        if f["field"] == 2:
+            continue                         # re-emitted below, at the end
+        if f["field"] == 1 and f["wire"] == pb.WT_LEN:
+            # An overridden species is the one case where a genuine entry is
+            # deliberately re-encoded: the client must be told the custom
+            # bundle's checksum/size/key, or it would validate our bytes
+            # against the stock numbers and drop them. asset_id and
+            # bundle_name are carried over untouched, so the template the
+            # client already resolved still lands on this entry.
+            e = pb.decode(f["value"])
+            bn = pb.get(e, 2, pb.WT_LEN)
+            name = bn.decode("ascii", "replace") if isinstance(bn, bytes) else ""
+            m = view.get(name)
+            if m and m.get("file"):
+                patched = _override_entry_bytes(m, name)
+                out.append(pb._tag(1, pb.WT_LEN)
+                           + pb.varint(len(patched)) + patched)
+                continue
+        if f["wire"] == pb.WT_VARINT:
+            out.append(pb._tag(f["field"], pb.WT_VARINT) + pb.varint(f["value"]))
+        elif f["wire"] == pb.WT_64:
+            out.append(pb._tag(f["field"], pb.WT_64) + struct.pack("<Q", f["value"]))
+        elif f["wire"] == pb.WT_LEN:
+            out.append(pb._tag(f["field"], pb.WT_LEN) + pb.varint(len(f["value"]))
+                       + f["value"])
+        elif f["wire"] == pb.WT_32:
+            out.append(pb._tag(f["field"], pb.WT_32) + struct.pack("<I", f["value"]))
+    w = pb.Writer()
+    for name, e in extras.items():
+        w.message(1, build_asset_digest_entry(
+            e["asset_id"], name, version=e["version"], checksum=e["checksum"],
+            size=e["size"], key=e["key"]))
+    w.uint(2, timestamp)
+    w.uint(3, 1)                             # result = SUCCESS
+    return b"".join(out) + w.to_bytes()
+
+
+def _override_entry_bytes(m, name):
+    """One re-encoded AssetDigestEntry for an overridden species.
+
+    `name` is the bundle name, which is the dict's key in the merged view
+    rather than a field of the entry -- and the one thing that must NOT change,
+    since it is what the client resolves an asset_id by.
+    """
+    return build_asset_digest_entry(m["asset_id"], name,
+                                    version=m["version"], checksum=m["checksum"],
+                                    size=m["size"], key=m["key"])
+
+
+def check_digest_response(data, platform="android"):
+    """Self-check for `_rebuild_digest`, and the thing to run when a phone will
+    not download a bundle. Returns a list of problems (empty = good).
+
+    Checks the three things that actually matter and that have each silently
+    broken before: the genuine entries survived byte-for-byte, our bundles are in
+    there exactly once each, and there is a single unambiguous timestamp and
+    result.
+    """
+    problems = []
+    fields = pb.decode(data)
+    genuine = pb.get_all(pb.decode(_raw_digest_bytes(platform)), 1)
+    now = pb.get_all(fields, 1)
+    # A species under a model override is INTENTIONALLY not byte-identical, so
+    # the "genuine entries are intact" assertion has to allow exactly those and
+    # nothing else. Everything else differing is still a real fault.
+    allowed = set()
+    for _base, _custom in _model_override_map(platform).items():
+        _m = _load_real_digest(platform).get(_base)
+        if _m and _m.get("file"):
+            allowed.add(_override_entry_bytes(_m, _base))
+    for i, want in enumerate(genuine):
+        got = now[i] if i < len(now) else None
+        if got != want and got not in allowed:
+            problems.append("the genuine digest entries are not intact at the front")
+            break
+    ts = [f["value"] for f in fields if f["field"] == 2]
+    if len(ts) != 1:
+        problems.append(f"timestamp field appears {len(ts)} times, want 1")
+    if not pb.get(fields, 3, pb.WT_VARINT):
+        problems.append("result field missing")
+    names = []
+    for raw in now[len(genuine):]:
+        n = pb.get(pb.decode(raw), 2, pb.WT_LEN)
+        names.append(n.decode() if isinstance(n, bytes) else "?")
+    for n in set(names):
+        if names.count(n) > 1:
+            problems.append(f"bundle {n} is listed {names.count(n)} times")
+    for n in names:
+        if not os.path.isfile(os.path.join(assets_dir(platform), n)):
+            problems.append(f"bundle {n} is advertised but not on disk")
+    return problems
+
+
+_DIGEST_RESPONSE = {}
+
+
 def build_get_asset_digest_response(platform="android") -> bytes:
     # GetAssetDigestResponse { digest=1 (repeated), timestamp_ms=2,
     #   result=3 (1=SUCCESS), page_offset=4 }. The client rejects an EMPTY digest
-    # as a null response, so include at least one entry. We list our real pm####
-    # bundles so the client will fetch them via GET_DOWNLOAD_URLS.
+    #   as a null response, so include at least one entry. We list our real pm####
+    #   bundles so the client will fetch them via GET_DOWNLOAD_URLS.
     # Preferred: hand back the GENUINE digest bytes untouched (this is exactly what
     # POGOServer does -- it serves player.asset_digest.buffer verbatim). Rebuilding it
-    # risks changing the timestamp/entries the client keys off. We only append the
-    # result field, which this 0.29 build wants and which protobuf tolerates anywhere.
+    #   risks changing the timestamp/entries the client keys off. So the genuine
+    #   message is kept as-is and only the extras, the timestamp and the result are
+    #   appended -- see `_rebuild_digest`.
     raw = _raw_digest_bytes(platform)
     if raw and not PLAIN_ASSETS:
-        # repeated fields may appear anywhere, so appending is safe
-        return raw + pb.Writer().uint(3, 1).to_bytes()           # result = SUCCESS
+        extras = _extra_digest(platform)
+        if not extras:
+            # nothing of ours: the stock answer, byte for byte what it always was
+            return raw + pb.Writer().uint(3, 1).to_bytes()
+        hit = _DIGEST_RESPONSE.get(platform)
+        want = (tuple(sorted(extras)), digest_timestamp(platform),
+                tuple(sorted(_model_override_map(platform).items())))
+        if hit and hit[0] == want:
+            return hit[1]
+        out = _rebuild_digest(raw, extras, want[1], platform)
+        problems = check_digest_response(out, platform)
+        if problems:
+            print("!! built asset digest failed its self-check: "
+                  + "; ".join(problems))
+        _DIGEST_RESPONSE[platform] = (want, out)
+        return out
 
     w = pb.Writer()
     entries = _our_bundles(platform)
@@ -906,8 +1219,9 @@ def build_get_asset_digest_response(platform="android") -> bytes:
         w.message(1, build_asset_digest_entry(
             b["asset_id"], b["bundle_name"], version=b["version"],
             checksum=b["checksum"], size=b["size"], key=b["key"]))
-    out = w.to_bytes() + extra
-    return out + pb.Writer().uint(2, ASSET_TS).uint(3, 1).to_bytes()
+    out = w.to_bytes()
+    return out + pb.Writer().uint(2, digest_timestamp(platform)).uint(3, 1).to_bytes()
+
 
 
 def parse_get_download_urls(msg: bytes):
@@ -927,11 +1241,20 @@ def build_get_download_urls_response(asset_ids, base_url) -> bytes:
     # result at #1 and the list at #2 with no size/checksum -- WRONG; this path was
     # never reached before so it went unverified.) size/checksum are the genuine
     # digest values so the client's pre-decrypt download check passes.
-    digest = _load_real_digest()
+    #
+    # The lookup is BY ASSET_ID, not by bundle name: the ids off the wire are
+    # '<guid>/<version>', which is what this dict is keyed by only for a species
+    # under a model override (where the id stays the stock one and the checksum
+    # becomes the custom bundle's). Looking up by name here silently matched
+    # nothing for every genuine bundle, so size/checksum were left unset.
+    by_id = {}
+    for platform in ("android", "ios"):
+        for m in _load_real_digest(platform).values():
+            by_id.setdefault(m["asset_id"], m)
     w = pb.Writer()
     for aid in asset_ids:
         entry = pb.Writer().string(1, aid).string(2, f"{base_url}/{aid}")
-        m = digest.get(aid)
+        m = by_id.get(aid)
         if m:
             entry.int_(3, m["size"]).uint(4, m["checksum"])
         w.message(1, entry.to_bytes())
