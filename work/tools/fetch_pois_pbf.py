@@ -62,10 +62,12 @@ def _download(region):
     return path
 
 
-def _extract(path):
+def _extract(path, storage="flex_mem"):
     """Every named POI of interest in the extract, as forts. osmium streams the
-    file (low memory) and attaches node locations so a way gets its centroid."""
-    fp = osmium.FileProcessor(path).with_locations().with_filter(KeyFilter(*base.KEYS))
+    file (low memory) and attaches node locations so a way gets its centroid.
+    `storage` is the osmium node-location index; pass a file-backed one
+    ("sparse_file_array,<path>") for extracts too big for RAM."""
+    fp = osmium.FileProcessor(path).with_locations(storage).with_filter(KeyFilter(*base.KEYS))
     forts = []
     scanned = 0
     for o in fp:

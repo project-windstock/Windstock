@@ -197,8 +197,23 @@ def park_nest_species(lat, lng, now_ms, rotation_days=14, share=0.67):
     roll = _mix(cid ^ (period * 0xD6E8FEB86659FD93) ^ 0x5041524B)
     if (roll % 1000) >= int(max(0.0, min(1.0, share)) * 1000):
         return 0
-    idx = _mix(cid ^ (period * 0x9E3779B97F4A7C15) ^ 0x4E455354) % len(NEST_SPECIES)
-    return NEST_SPECIES[idx]
+    pool = nest_pool()
+    idx = _mix(cid ^ (period * 0x9E3779B97F4A7C15) ^ 0x4E455354) % len(pool)
+    return pool[idx]
+
+
+def nest_pool():
+    """The species nests pick from: `spawns.nest_species` when set, else the
+    classic 2016 list. Bad entries are dropped; an empty result falls back."""
+    try:
+        import settings as _cfg
+        got = [int(x) for x in (_cfg.get("spawns", "nest_species") or [])
+               if 0 < int(x) < 1000]
+        if got:
+            return got
+    except Exception:
+        pass
+    return NEST_SPECIES
 
 
 def nest_species(lat, lng, now_ms, level=12, rotation_days=14):

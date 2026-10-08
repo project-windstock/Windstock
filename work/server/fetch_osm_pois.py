@@ -41,7 +41,8 @@ BLOCK = {"parking", "parking_space", "parking_entrance", "bench", "waste_basket"
          "recycling", "bicycle_parking", "vending_machine", "drinking_water",
          "toilets", "fountain", "grit_bin", "hunting_stand", "shelter",
          "street_lamp", "clock", "telephone", "post_box", "atm", "bbq",
-         "motorcycle_parking", "charging_station"}
+         "motorcycle_parking", "charging_station",
+         "survey_point"}
 
 # True landmarks are always gyms; everything else is a stop unless the hash below
 # promotes it, so the stop:gym ratio stays realistic (~5:1) instead of turning

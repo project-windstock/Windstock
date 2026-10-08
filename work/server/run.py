@@ -212,7 +212,8 @@ def main(ui_stream=None):
     print(f"  World Manager (this PC):          {admin_url}")
     print(f"  Point the phone's Wi-Fi DNS at:   {redirect_ip}")
     print(f"  Game server : https://{redirect_ip}:{os.environ['PORT']}")
-    print(f"  DNS redirect: udp {redirect_ip}:{os.environ['DNS_PORT']}")
+    if int(os.environ["DNS_PORT"]):
+        print(f"  DNS redirect: udp {redirect_ip}:{os.environ['DNS_PORT']}")
     print("  (Ctrl-C to stop)")
     print("=" * 60)
     print("  bracky's PoGO server -- everything below is live server activity")
@@ -220,13 +221,22 @@ def main(ui_stream=None):
 
     # DNS in a supervised background thread (auto-restarts if it ever dies)
     def dns_loop():
+        # main() RETURNS when the port is taken (mDNSResponder owns 5353 on a
+        # Mac). Retrying that instantly spun a core at 100% -- 227k "Could not
+        # bind" lines in one log -- and starved every request of the GIL. Back
+        # off, up to a minute, until a bind actually holds.
+        wait = 1
         while True:
             try:
                 dns_redirect.main()
             except Exception as e:
                 print(f"[dns] restarting after: {e}", flush=True)
-                time.sleep(1)
-    threading.Thread(target=dns_loop, daemon=True).start()
+            time.sleep(wait)
+            wait = min(60, wait * 2)
+    # DNS_PORT=0 turns the redirect off -- a public VPS serving only Windstock
+    # Online has no use for it, and an open :53 on the internet invites abuse.
+    if int(os.environ["DNS_PORT"]):
+        threading.Thread(target=dns_loop, daemon=True).start()
 
     # Plain-HTTP door for the 0.35 client's PTC login, supervised the same way.
     # 0.35 dropped the permissive cert-validation callback 0.29 had, so its
@@ -243,7 +253,74 @@ def main(ui_stream=None):
             except Exception as e:
                 print(f"[bridge] restarting after: {e}", flush=True)
                 time.sleep(1)
-    threading.Thread(target=sso_bridge_loop, daemon=True).start()
+    # SSO_BRIDGE_PORT=0 leaves it out: a public box that players reach only
+    # through Windstock Online has no use for a cleartext login door.
+    if int(os.environ.get("SSO_BRIDGE_PORT", "80") or 0):
+        threading.Thread(target=sso_bridge_loop, daemon=True).start()
+
+    # The online door: players reach it by IP from the launchers' "Windstock
+    # Online" mode -- TLS only, no DNS, no certificate to install.
+    try:
+        import settings as _cfg
+        online_port = _cfg.get("server", "online_port", env="ONLINE_PORT", cast=int)
+    except Exception:
+        online_port = int(os.environ.get("ONLINE_PORT", "8888"))
+    if online_port:
+        try:
+            import online
+            # ONLINE_BIND lets a public box keep the game's own ports on
+            # loopback (BIND=127.0.0.1) and expose only this one.
+            if online.start(online_port, os.environ.get("ONLINE_BIND") or os.environ["BIND"]):
+                print(f"  Windstock Online: {redirect_ip}:{online_port}  (type this in the"
+                      f" launcher; forward the port for players outside your network)")
+        except OSError as e:
+            print(f"!! online port {online_port} unavailable: {e}")
+
+    # Logins on the Windstock website (the public server): its trainers' stats
+    # go to the website's leaderboard from here. Off unless SITE_ACCOUNTS_URL
+    # and SITE_GAME_KEY are set.
+    try:
+        import siteaccounts
+        import world
+        if siteaccounts.start_reporter(world.SAVES_DIR):
+            print("  Logins: checked by the Windstock website; stats go to its leaderboard"
+                  if siteaccounts.logins() else
+                  "  Leaderboard: every trainer's stats go to the Windstock website")
+    except Exception as e:
+        print(f"!! website logins unavailable: {e}")
+
+    # Load the big map files now, not inside the first player's map refresh:
+    # osm_forts.json + osm_biomes.json took ~5-7 s to parse and index, and the
+    # first GET_MAP_OBJECTS after every restart sat through all of it (holding
+    # the fort lock, so everyone else's map waited too).
+    def warm_map():
+        t0 = time.time()
+        try:
+            import pois
+            import biomes
+            import settings as _s
+            if _s.get("pokestops", "use_osm", cast=bool):    # else never loaded at all
+                pois.forts_by_cell()
+            biomes._load_terrain()
+            biomes._load_cells()
+            pois._freeze()          # keep the GC off these ~1M never-changing objects
+            print(f"  [map] forts and biomes loaded in {time.time() - t0:.1f} s", flush=True)
+        except Exception as e:
+            print(f"  [map] preload failed (loads on first map request instead): {e}",
+                  flush=True)
+    threading.Thread(target=warm_map, daemon=True).start()
+
+    # systemd's stop/restart is SIGTERM, which by default ends Python without
+    # running atexit -- and world.flush_saves() (batched saves) is registered
+    # there. Turn it into a normal exit.
+    try:
+        import signal
+
+        def _term(*_):
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, _term)
+    except (ImportError, ValueError):
+        pass
 
     # HTTPS server on the main thread (blocks until Ctrl-C)
     try:

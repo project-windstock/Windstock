@@ -11,7 +11,10 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CERTS = os.path.join(HERE, "certs")
+# `py gen_certs.py <folder>` writes somewhere else -- e.g. a separate set for a
+# public server, which must NOT share the key that ships inside the launchers.
+CERTS = (os.path.abspath(sys.argv[1]) if len(sys.argv) > 1
+         else os.path.join(HERE, "certs"))
 
 # Apple's cap is 398 days; stay just under it.
 LEAF_DAYS = "397"
@@ -55,7 +58,10 @@ def main():
             "-sha256", "-days", "3650", "-out", p("ca.crt"),
             "-subj", "/C=US/O=PoGO Private Server/CN=PoGO Private CA",
             "-addext", "basicConstraints=critical,CA:TRUE",
-            "-addext", "keyUsage=critical,keyCertSign,cRLSign")
+            "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+            # Key identifiers: strict verifiers (Python 3.13's default) refuse
+            # a chain without them.
+            "-addext", "subjectKeyIdentifier=hash")
         print("created a NEW root CA -- every phone must reinstall ca.crt")
 
     # 2) Leaf key + CSR
@@ -72,7 +78,9 @@ def main():
     ext = ("subjectAltName=" + ",".join(f"DNS:{h}" for h in SANS) + "\n"
            "extendedKeyUsage=serverAuth\n"
            "keyUsage=critical,digitalSignature,keyEncipherment\n"
-           "basicConstraints=CA:FALSE\n")
+           "basicConstraints=CA:FALSE\n"
+           "subjectKeyIdentifier=hash\n"
+           "authorityKeyIdentifier=keyid,issuer\n")
     with tempfile.NamedTemporaryFile("w", suffix=".ext", delete=False) as f:
         f.write(ext)
         extfile = f.name
@@ -86,8 +94,8 @@ def main():
 
     print("Wrote:")
     for n in ("ca.crt", "ca.key", "server.crt", "server.key"):
-        print("  certs/" + n)
-    print("\nInstall certs/ca.crt on your device/emulator as a trusted CA.")
+        print("  " + p(n))
+    print("\nInstall ca.crt on your device/emulator as a trusted CA.")
 
 
 if __name__ == "__main__":

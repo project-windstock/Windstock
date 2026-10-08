@@ -33,18 +33,23 @@ DEFAULTS = {
         "xp_great_throw": 1000,
         "xp_excellent_throw": 2000,
         "xp_curveball": 10,
+        "xp_new_species": 500,      # first catch/hatch of a species (2016 value)
+        # Ditto hides as a common Pokemon (Nov 2016: Pidgey, Rattata, Zubat,
+        # Magikarp); this share of those spawns turn out to be Ditto when caught.
+        "ditto_chance": 0.02,
+        "ditto_disguises": [16, 19, 41, 129],
         "fast_catch": False,        # true = one throw, one wobble, no escapes
         "base_catch_rate": 0.55,    # chance a Poke Ball holds a weak Pokemon
         "flee_chance": 0.12,        # chance it runs off after breaking out
         "razz_capture_mult": 1.8,   # how much a Razz Berry helps
         "razz_flee_mult": 0.4,      # ...and how much less likely it is to flee
-        # The ball wobbles more the higher the capture chance we report to the
-        # client (its GetNumShakes reads it). Resisting Pokemon have low real odds,
-        # so they used to break out on the FIRST shake -- this floors the number we
-        # report so a break-out rocks ~2-3 times first. Only the animation/ring is
-        # affected; the true catch odds below are untouched. Lower it for snappier
-        # break-outs, raise it (toward 1.0) for longer ones.
-        "min_shake_probability": 0.7,
+        # How many times the ball wobbles before a Pokemon breaks out. Each row is
+        # [miss_up_to, wobbles, miss_percent]: `miss` is how badly the throw failed
+        # (0 = it only just broke free, 1 = it was never close) and the first row
+        # whose miss_up_to is above it wins. wobbles is only a label -- the client
+        # turns miss_percent into wobbles (< 0.15 = 3, < 0.5 = 2, < 0.75 = 1, else 0).
+        # A catch always wobbles 3 times, so a break-out on the 3rd keeps it tense.
+        "escape_wobble_bands": [[0.35, 3, 0.05], [0.70, 2, 0.3], [0.92, 1, 0.6]],
         # Ring size needed for each throw bonus, and how much spin counts as a
         # curveball. ZERO means "use the game master", which is what you want:
         # the client reads these same numbers out of ENCOUNTER_SETTINGS to decide
@@ -90,6 +95,13 @@ DEFAULTS = {
         # off the roads. When that file has forts, the random procedural ones are
         # turned off. false (or no file) = fall back to procedural placement.
         "use_osm": True,
+        # Real-map (OSM) density. A city centre in Europe tags every shop and
+        # office -- up to ~230 named places per ~300m cell in Vienna -- and the
+        # 2016 client freezes on the catch screen with ~500+ forts on the map.
+        # At most this many forts per ~300m cell (0 = no limit), and never two
+        # in the same ~70m cell like the real game. Parks/landmarks are kept first.
+        "osm_max_per_cell": 10,
+        "osm_one_per_l17": True,
         "xp_per_spin": 50,
         "cooldown_minutes": 5,
         "min_items_per_spin": 5,        # a spin never gives fewer items than this
@@ -121,7 +133,7 @@ DEFAULTS = {
         # it's level 5+.
         "let_players_choose": True,
         "team": 1,                     # the auto-assigned team when choosing is off
-        "defender_minutes": 15,
+        "defender_minutes": 1440,       # 24 hours
         # Damage a gym defender takes STICKS between attacks, so a strong gym can
         # be worn down over several fights. This is how long a defender takes to
         # heal back to full if it is left alone (0 = never heals).
@@ -219,12 +231,18 @@ DEFAULTS = {
         "region_nests": False,
         # How often nests rotate to a new species, in days (2016 was ~14).
         "nest_rotation_days": 14,
+        # Which species nests pick from (Pokedex numbers). Empty = the classic
+        # 2016 nest list (starters, Pikachu, Eevee, Dratini, Magikarp, ...).
+        "nest_species": [],
+        # How far the Hub's nest list looks for nesting parks, in metres.
+        "nest_list_radius_m": 3000,
         # Day/night: nocturnal Pokemon (Zubat, ghosts, ...) favour the dark and
         # day types favour daylight, using local time at your longitude.
         "day_night": True,
     },
     "eggs": {
         "max_eggs": 9,              # egg bag size
+        "hatch_xp": 200,            # XP for hatching any egg (2016 value)
         "drop_chance": 0.35,        # chance a PokeStop spin gives an egg
         # How often each egg tier drops (relative weights), and what can hatch from
         # each. Empty species list = the built-in pool for that tier.
@@ -232,6 +250,7 @@ DEFAULTS = {
         "species_2km": [],
         "species_5km": [],
         "species_10km": [],
+        "iv_floor": 10,             # a hatchling's Attack/Defense/Stamina IVs are each at least this (0-15)
         "min_step_m": 1.0,          # GPS moves smaller than this are jitter
         # Bigger than this between two GPS fixes is treated as a teleport and does
         # NOT count towards eggs. 120 m was too low: DRIVING moves further than that
@@ -240,14 +259,36 @@ DEFAULTS = {
         # 120 if you want the strict "walk only" behaviour.
         "max_step_m": 1000.0,
     },
+    # anticheat.py: a speed lock for everyone but spoofers, who are MARKED instead.
+    "anticheat": {
+        "enabled": True,
+        # the speed lock: above these, spins fail, catches break free and walked
+        # distance (eggs, km) doesn't count. 0 = no limit. Spoofers are exempt (marked).
+        "spin_max_mph": 35,
+        "catch_max_mph": 35,
+        "walk_max_mph": 15,
+    },
+    # The launcher a player needs for the public server. 0 = any launcher. Above the
+    # tunnel's LAUNCHER_BUILD (tunnel.py), older launchers are told to update, with a
+    # link to update_url (new launchers turn Play into an Update button that opens it).
+    "launcher": {
+        "min_build": 0,
+        "update_url": "https://windstock.org/downloads.html",
+    },
     "boosts": {
         "lucky_egg_minutes": 30,    # double XP while it burns
         "incense_minutes": 30,      # extra wild Pokemon around you
         "incense_extra_spawns": 6,  # (unused since 2026-09-25: see incense_spawn_seconds)
         "incense_spawn_seconds": 30,       # a burning Incense brings one Pokemon this often
-        "incense_spawn_life_seconds": 180, # ...and each one stays this long (so ~6 at once)
+        "incense_spawn_life_seconds": 30,  # ...and each one flees this long after it appears
+        "incense_spawn_distance_m": 5,     # ...within this many metres of the trainer
+        "incense_walk_m": 25,              # ...once you have walked this far since the
+                                           # last one (0 = no walking needed)
+        "incense_still_seconds": 60,       # ...or, standing still, one this often
+                                           # (0 = walking only)
         "lure_minutes": 30,         # a Lure on a PokeStop
         "lure_extra_spawns": 4,     # extra Pokemon around a lured stop
+        "lure_pokemon_seconds": 90, # the Pokemon sitting ON a lured stop changes this often
         # true = luring an already-lured stop ADDS its time instead of being refused,
         # so a group can keep one stop lit all day ("lure party").
         "lure_stacks": True,
@@ -265,12 +306,20 @@ DEFAULTS = {
         "evolve_xp": 500,
         "transfer_candy": 1,
         "faint_after_gym": True,
+        # Field/Special Research reward Pokemon: Attack/Defense/Stamina IVs are each
+        # at least this (0-15), like the real game's 10/10/10 research floor.
+        "research_iv_floor": 10,
     },
     "battles": {
         "attack_damage": 12,
         "special_damage": 30,
         "defender_damage": 8,
-        "win_xp": 1000,
+        # 2016 XP: per defender you beat -- 50 training your own team's gym, 100
+        # attacking someone else's -- plus 150 for taking the whole gym down.
+        "train_xp": 50,
+        "battle_xp": 100,
+        "gym_win_xp": 150,
+        "raid_xp": 1000,            # beating a raid boss (raids weren't in 2016)
         # This client (measured) only enters combat for TRAINING-type gym battles;
         # a NORMAL (attack an enemy gym) battle opens then freezes -- you can't
         # attack. true = report enemy battles as TRAINING so the client will fight
@@ -295,6 +344,14 @@ DEFAULTS = {
         "incense_minutes": 30.0,
         "incense_spawn_rate": 0.1,  # Shiny Incense: chance each Pokemon IT brings is shiny
     },
+    "trading": {
+        "enabled": True,
+        "daily_limit": 10,          # trades per trainer per day (UTC)
+        "min_level": 5,             # both trainers must be at least this level
+        "cost": 100,                # stardust each side pays for an ordinary trade
+        "special_cost": 20000,      # ... when either Pokemon is shiny or legendary
+        "candy": 3,                 # candy each side gets for the species they sent
+    },
     "shop": {
         "price_multiplier": 1.0,    # 0.5 = half price, 2.0 = double
         # true once the Android APK has been run through tools/patch_badges.py: its
@@ -315,6 +372,26 @@ DEFAULTS = {
         "spin7_dust": 2000,
         "spin7_items": {"2": 5, "101": 3},
     },
+    "halloween": {
+        # The look patched clients (iOS tweak v157+) put on while an event whose
+        # theme is "halloween" runs (the Halloween preset; events.py). Nothing
+        # here does anything outside such an event.
+        "night_all_day": True,      # the map stays in its night look, and the
+                                    # night music plays, whatever the clock says
+        "fog": True,                # coloured haze over the map and in catches
+        "fog_color": "#A6501A",     # dim pumpkin orange
+        # how close the haze starts / where it is solid, in map units (the camera
+        # sits ~49 from your trainer). Smaller = thicker.
+        "fog_start": 55.0,
+        "fog_end": 500.0,
+        # the haze climbs past the horizon and fades out (iOS tweak v160+): how many
+        # degrees up it reaches (25 at most -- the sky picture wraps above that).
+        "fog_sky": True,
+        "fog_sky_height": 20.0,
+        "tint": True,               # recolour the map's night light
+        "tint_color": "#7A3CFF",    # violet; brightness stays the game's own
+        "tint_amount": 0.6,         # 0 = the game's night light, 1 = all tint
+    },
     "weather": {
         "enabled": True,
         "spawn_boost": 3,
@@ -322,14 +399,40 @@ DEFAULTS = {
         "stardust_bonus_percent": 25.0,
         "windy_kmh": 24.0,
         "force": "",
+        # true = the weather's types spawn more, with more CP and stardust;
+        # false = looks only. (Was "gameplay", off for the v136-v142 tests.)
+        "boosts": True,
+        # The tweak's 3D rain (v141), sent to the phone with /weather. It rains around
+        # the Pokemon in a catch and around you on the map; sizes are SHARES of the
+        # camera's distance to that anchor, so both scenes look alike. debug = the
+        # camera/anchor numbers on screen. ("rain3d"/"rain" were older, other units.)
+        "rainfx": {"hud": False, "count": 500, "area": 1.2, "fall": 1.0,
+                   "length": 0.06, "width": 0.001, "speed": 0.9, "near": 0.25,
+                   "ahead": 0.3, "wind": 0.18, "gust": 0.12, "alpha": 0.45,
+                   "ground_offset": 0, "ripples": 80, "ripple_chance": 0.35,
+                   "ripple_size": 0.018, "ripple_life": 0.7, "ripple_alpha": 0.5,
+                   "ripple_width": 0.001,
+                   # v143: snow (weather "snow") and gusts (weather "windy")
+                   "snow_speed": 0.12, "snow_size": 0.006, "snow_alpha": 0.85,
+                   "wind_speed": 1.6, "wind_length": 0.15, "wind_alpha": 0.22,
+                   # v145: fog sheets behind the Pokemon in catches (hide the backdrop)
+                   "mist_fog": 1.0, "mist_rain": 0.35, "mist_snow": 0.45,
+                   "mist_cloudy": 0.0,
+                   # v148: how much each weather dims the scene by day (0..0.85);
+                   # nights get shade_night of it. fog_distance scales every
+                   # weather's fog (0.5 = twice as close)
+                   "shade_rainy": 0.38, "shade_snow": 0.16, "shade_fog": 0.22,
+                   "shade_cloudy": 0.24, "shade_windy": 0.10,
+                   "shade_partly_cloudy": 0.08, "shade_night": 0.25,
+                   "shade_distance": 0.3, "fog_distance": 1.0},
     },
     "radar": {
         # Seconds you must wait between radar sweeps -- the Help Center's radar,
         # the Radar tab in game and the desktop /radar page all share it, so a
         # sweep in one counts in the others. 0 = no cooldown, sweep as often as
-        # you like. The genuine feel was 60; the only cost of 0 is that each
-        # sweep seeds spawns for the circle around you, which is work.
-        "cooldown_seconds": 0,
+        # you like. The genuine feel was 60; 20 keeps sweeps snappy without
+        # seeding spawns for the circle around you on every tap.
+        "cooldown_seconds": 20,
         # How far a sweep reaches, in metres.
         "range_m": 500.0,
     },
@@ -414,6 +517,25 @@ DEFAULTS = {
     },
     "server": {
         "world_manager_port": 8080,
+        # The online door (online.py): one public port players reach BY IP from
+        # the launchers' "Windstock Online" mode -- no DNS, no certificate to
+        # install. TLS only (the launcher's tunnel). Open/forward it on your
+        # router or VPS firewall. 0 = off. Takes effect the NEXT time the server
+        # is started.
+        "online_port": 8888,
+        # The most trainer accounts this server will hold. Every account is a
+        # save file, and signing up is free, so without a ceiling a stranger
+        # could fill the disk. 0 = no limit.
+        "max_accounts": 5000,
+        # false = invite-only: nobody can make a new trainer over the network,
+        # only the ones you create in the World Manager ("New beta tester") get
+        # in. Trainers that already have a password are not affected, and the
+        # server's own machine (the phone's built-in server) can always sign up.
+        "open_signups": True,
+        # Player-added PokeStop photos: the most disk they may use in total
+        # (MB), and the most places one trainer may add in all.
+        "photos_max_mb": 300,
+        "nominations_per_trainer": 100,
         # EXPERIMENT: serve our branded HTML page at the real PTC login URL
         # (/sso/login). If the client's PTC button opens a WEBVIEW, this replaces
         # the login screen with our own (logo, text, email+password, no Google).
@@ -446,6 +568,11 @@ _README = [
     "   xp_great_throw ....... bonus XP for a Great throw",
     "   xp_excellent_throw ... bonus XP for an Excellent throw",
     "   xp_curveball ......... small extra bonus for a curveball",
+    "   xp_new_species ....... bonus XP the first time you catch, hatch or",
+    "                          evolve into a species (a new Pokedex entry)",
+    "   ditto_chance ......... share of disguise spawns that are secretly",
+    "                          Ditto (0.02 = 1 in 50; 0 = no Ditto)",
+    "   ditto_disguises ...... what Ditto hides as (Pokedex numbers)",
     "",
     "pokestops:",
     "   xp_per_spin .......... XP each time you spin a stop",
@@ -468,6 +595,10 @@ _README = [
     "   anchor_near_player ... false = stops/gyms stay at fixed spots (best for",
     "                          driving). true = also drops a trio at your feet that",
     "                          follows you -- spams the road when you move.",
+    "   osm_max_per_cell ..... most real-map stops/gyms per ~300m cell (10;",
+    "                          0 = all). Dense cities froze the client above ~500.",
+    "   osm_one_per_l17 ...... true = never two real-map stops within one ~70m",
+    "                          cell, like the real game",
     "",
     "gyms:",
     "   team ................. your team: 1=Blue, 2=Red, 3=Yellow",
@@ -499,7 +630,10 @@ _README = [
     "   park_nest_share ...... 0..1 share of parks that are nests each cycle",
     "   nest_chance .......... 0..1 chance a spawn in a nest is the nest species",
     "   region_nests ......... true = also the old whole-region (~3 km) nests",
-    "   nest_rotation_days ... how often a nest rotates species (2016 was ~14)",
+    "   nest_rotation_days ... how often a nest rotates species (2016 was ~14);",
+    "                          migrations land on Thursdays 00:00 UTC for 7 or 14",
+    "   nest_species ......... Pokedex numbers nests pick from ([] = 2016 list)",
+    "   nest_list_radius_m ... how far the Hub's NESTS list looks (metres)",
     "   day_night ............ true = nocturnal Pokemon favour night, day types",
     "                          favour daylight (local time at your longitude)",
     "",
@@ -523,6 +657,7 @@ _README = [
     "                          clips score Nice/Great again.",
     "",
     " eggs",
+    "   hatch_xp ............. XP for hatching an egg (any distance)",
     "   drop_chance .......... how often a PokeStop hands you an egg (0-1)",
     "   max_step_m ........... distance only counts if you really walked it --",
     "                          a GPS jump bigger than this is ignored, so you",
@@ -553,7 +688,10 @@ _README = [
     "   attack_damage ........ damage your normal tap does",
     "   special_damage ....... damage your charged move does",
     "   defender_damage ...... damage the gym Pokemon does back to you",
-    "   win_xp ............... XP for taking down a whole Gym",
+    "   train_xp ............. XP per defender beaten in your own team's Gym",
+    "   battle_xp ............ XP per defender beaten in someone else's Gym",
+    "   gym_win_xp ........... extra XP for taking down a whole Gym",
+    "   raid_xp .............. XP for beating a raid boss",
     "",
     "raids:  (Raid mode in the World Manager -- multiplayer bosses)",
     "   boss_hp_multiplier ... the boss has this many times its normal HP, in ONE",
@@ -583,6 +721,14 @@ _README = [
     "                          (boosts.incense_spawn_seconds); each one it brings is shiny",
     "                          this often (0.1 = 1 in 10)",
     "",
+    "trading:  (Pokemon trades between trainers, made in Discord through Windbot)",
+    "   enabled .............. false = no trades",
+    "   daily_limit .......... trades each trainer may make per day (UTC)",
+    "   min_level ............ both trainers need at least this level",
+    "   cost ................. stardust EACH trainer pays for an ordinary trade",
+    "   special_cost ......... ... when either Pokemon is shiny or legendary",
+    "   candy ................ candy each trainer gets for the species they sent",
+    "",
     "shop:",
     "   price_multiplier ..... scales every price in the in-game shop",
     "   patched_android ...... true if the Android APK went through tools/patch_badges.py:",
@@ -596,6 +742,14 @@ _README = [
     "   spin7_xp / spin7_dust / spin7_items      ...and every 7th day in a row",
     "   the *_items are {\"item id\": count} -- 2 = Great Ball, 101 = Potion",
     "",
+    "halloween:  (the map's look during a Halloween-themed event; iOS tweak v157+)",
+    "   night_all_day ........ true = night map and night music at any hour",
+    "   fog / fog_color ...... coloured haze (\"#RRGGBB\"); fog_start / fog_end =",
+    "                          where it begins / is solid (smaller = thicker)",
+    "   fog_sky .............. the haze rises into the sky and fades out (v160+);",
+    "                          fog_sky_height = degrees above the horizon (2-25)",
+    "   tint / tint_color .... recolour the night light; tint_amount 0..1",
+    "",
     "weather:  (real weather from Open-Meteo -- the only feature that uses the internet)",
     "   enabled .............. false = no weather, nothing is ever sent out",
     "   spawn_boost .......... Pokemon of the weather's types spawn this many times",
@@ -606,6 +760,22 @@ _README = [
     "   windy_kmh ............ wind speed that turns dry weather into 'Windy'",
     "   force ................ '' = real weather; or sunny, clear, partly_cloudy,",
     "                          cloudy, rainy, snow, fog, windy to fix it (testing)",
+    "   boosts ............... true = the weather's types spawn more, with more CP",
+    "                          and stardust; false = looks only",
+    "   rainfx ............... the 3D rain, around the Pokemon (catch) or you (map).",
+    "                          Sizes are shares of the camera's distance to it:",
+    "                          area, fall, length, width, speed, near, ahead,",
+    "                          ripple_size, ripple_width; also count, wind, gust,",
+    "                          alpha, ground_offset, ripples, ripple_chance,",
+    "                          ripple_life, ripple_alpha; hud = camera numbers on screen;",
+    "                          snow_speed, snow_size, snow_alpha (snow), wind_speed,",
+    "                          wind_length, wind_alpha (windy); mist_fog, mist_rain,",
+    "                          mist_snow, mist_cloudy = how much the catch screen's",
+    "                          fog sheets hide the backdrop (0..1); shade_rainy,",
+    "                          shade_snow, shade_fog, shade_cloudy, shade_windy,",
+    "                          shade_partly_cloudy = how dark the scene gets by day",
+    "                          (0..0.85), shade_night = share of that after dark;",
+    "                          fog_distance = scales the fog (0.5 = twice as close)",
     "",
     "avatar:  (what your trainer wears)",
     "   choose_in_game ....... true = the game's own dress-up screen opens the",
@@ -632,6 +802,13 @@ _README = [
     "",
     "server:",
     "   world_manager_port ... the http://127.0.0.1:PORT control panel",
+    "   online_port .......... public port for the launchers' Windstock Online",
+    "                          mode (players type IP:PORT); 0 = off; next start",
+    "   max_accounts ......... most trainer accounts the server will hold (0 = no limit)",
+    "   open_signups ......... false = invite-only: new trainers only from the",
+    "                          World Manager's 'New beta tester' button",
+    "   photos_max_mb ........ disk the player-added stop photos may use in total",
+    "   nominations_per_trainer  most places one trainer may add in all",
     "   window ............... 'bracky' = the server window, 'console' = the",
     "                          old black console window (applies on next start)",
     "====================================================================",

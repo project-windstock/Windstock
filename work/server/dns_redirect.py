@@ -197,7 +197,7 @@ if __name__ == "__main__":
     import time as _t
     while True:                 # auto-rebind if the socket ever dies
         try:
-            main()
+            main()              # returns when the port is taken: don't spin on it
         except Exception as e:
             print(f"[dns] restarting after fatal: {e}", flush=True)
-            _t.sleep(1)
+        _t.sleep(5)

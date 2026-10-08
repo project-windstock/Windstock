@@ -9,9 +9,14 @@ Run:  py server.py            # listens on 0.0.0.0:443
 """
 import datetime
 import os
+import socket
 import ssl
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+import netbase
+from netbase import (HANDSHAKE_TIMEOUT, IDLE_TIMEOUT, MAX_BODY,      # noqa: F401
+                     ThreadingHTTPServer, TLSServer)                 # (ws_boot uses these names)
 
 import helpcenter
 import bracky_site
@@ -27,7 +32,7 @@ PORT = int(os.environ.get("PORT", "443"))
 BIND = os.environ.get("BIND", "0.0.0.0")
 
 
-_QUIET = {"/research/ping", "/research/state", "/shiny/state"}
+_QUIET = {"/research/ping", "/research/state", "/shiny/state", "/shiny/gps", "/windstock/players", "/windstock/events"}
 
 
 def log(msg):
@@ -36,26 +41,79 @@ def log(msg):
         print(f"{ts}  {line}", flush=True)
 
 
+_loopback = netbase.loopback
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    timeout = IDLE_TIMEOUT
 
     def log_message(self, *a):       # silence default noisy logging
         pass
 
+    def setup(self):
+        super().setup()
+        # Small request/answer pairs on a long keep-alive connection: send each
+        # packet the moment it's ready instead of batching (Nagle's algorithm).
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):
+            pass
+
     def _read_body(self):
+        """The request body. ValueError if its length is missing sense or over
+        MAX_BODY -- checked before a single byte is read."""
         n = int(self.headers.get("Content-Length", 0) or 0)
+        if n < 0 or n > MAX_BODY:
+            raise ValueError("body too large")
         return self.rfile.read(n) if n else b""
+
+    def _client_ip(self):
+        """Who is really asking. sso_bridge.py relays logins from loopback and
+        names the phone in X-WS-Forwarded-For; that header is believed ONLY
+        from loopback, so nobody outside can lend themselves another address."""
+        ip = self.client_address[0]
+        if _loopback(ip):
+            fwd = (self.headers.get("X-WS-Forwarded-For") or "").strip()
+            if fwd and len(fwd) <= 64:
+                return fwd
+        return ip
 
     def _dispatch(self, method):
         host = (self.headers.get("Host", "") or "").split(":")[0].lower()
         path, _, query = self.path.partition("?")
-        body = self._read_body()
-        rpc._req_ip.value = self.client_address[0]
+        try:
+            body = self._read_body()
+        except ValueError:
+            self.close_connection = True       # the unread body is still in the pipe
+            return self._reply(413, {"Content-Type": "text/plain",
+                                     "Connection": "close"}, b"too large")
+        client_ip = self._client_ip()
+        rpc._req_ip.value = client_ip
+        rpc._req_dev.value = rpc.clean_device(self.headers.get("X-WS-Device"))
+        _old = False
+        if getattr(self.server, "online_door", False):
+            import online
+            _old = online.outdated(self.headers, local=_loopback(self.client_address[0]))
+            if not _old and online.up_to_date(self.headers):
+                online.clear_outdated(client_ip)
+        rpc._req_old.value = _old
+        if (getattr(self.server, "online_door", False)
+                and not isinstance(self.connection, ssl.SSLSocket)
+                and not _loopback(self.client_address[0])):
+            # Plain HTTP on the public door: a launcher from before the tunnel,
+            # or a stranger. Nothing is served in the clear over the network.
+            self.close_connection = True
+            return self._reply(426, {"Content-Type": "text/plain", "Connection": "close",
+                                     "Upgrade": "TLS/1.2"},
+                               b"This server only accepts the encrypted connection. "
+                               b"Update your Windstock launcher.")
         try:
             # Log every non-RPC request. When a login "just fails", this is the
             # difference between knowing the client reached us and guessing.
             # (the tweak's background polls are left out -- they arrive every few seconds)
-            if not path.startswith("/plfe") and path not in _QUIET:
+            if (not path.startswith(("/plfe", "/windstock/admin/art/"))
+                    and path not in _QUIET):
                 log(f"[http] {method} https://{host}{path}"
                     + (f"?{query}" if query else ""))
             if bracky_site.owns(path):
@@ -63,6 +121,24 @@ class Handler(BaseHTTPRequestHandler):
                 # by exact path, so it cannot shadow the game's own routes.
                 status, headers, out = bracky_site.handle(method, path, query,
                                                             self.headers, body, log)
+            elif path.startswith("/windstock/trade/"):
+                # Trades, asked by Windbot over loopback (trading.py).
+                import trading
+                status, headers, out = trading.handle(
+                    method, path, query, body, local=_loopback(self.client_address[0]))
+            elif path.startswith("/windstock/admin/"):
+                # The website's admin page: a trainer's bag and Pokemon
+                # (trainer_admin.py). Loopback + the website's key only.
+                import trainer_admin
+                status, headers, out = trainer_admin.handle(
+                    method, path, query, body, self.headers,
+                    local=_loopback(self.client_address[0]))
+            elif path.startswith("/windstock/"):
+                # The online door's handshake (online.py): "is this a Windstock
+                # server?" and its CA, asked by the launchers over plain HTTP.
+                import online
+                status, headers, out = online.handle(
+                    method, path, local=_loopback(self.client_address[0]))
             elif path.startswith("/webassets/"):
                 # Leaflet, shipped with the server. The in-game map page loads
                 # it from THIS origin (the World Manager is on another port).
@@ -76,14 +152,13 @@ class Handler(BaseHTTPRequestHandler):
                 status, headers, out = radarsite.handle(method, path, query,
                                                         self.headers, body, log)
             elif path.startswith("/shop"):
-                # Checked before the host, so the Help Center can use the shop's
-                # item art from its own origin (and so the shop is reachable on
-                # whichever of our hostnames the phone happens to resolve).
+                # Checked before the host, so the shop is reachable on whichever
+                # of our hostnames the phone happens to resolve.
                 status, headers, out = shop.handle(method, path, query,
                                                    self.headers, body, log)
             elif "zendesk" in host or path.startswith("/hc"):
-                # The in-game support button lands here. Player-facing, unlike
-                # the World Manager, which stays on localhost.
+                # The radar's sign-in/sweep API (helpcenter.py). The Help Center
+                # page itself is gone, so the in-game support button gets a 404.
                 status, headers, out = helpcenter.handle(method, path, query,
                                                          self.headers, body, log)
             elif path.startswith("/sso"):
@@ -108,12 +183,12 @@ class Handler(BaseHTTPRequestHandler):
                 # The windstock tweak asking whether what's on screen is shiny.
                 import shiny
                 status, headers, out = shiny.handle(method, path, query, self.headers,
-                                                    body, log, self.client_address[0])
+                                                    body, log, client_ip)
             elif path.startswith("/research"):
                 # The windstock tweak's Research screens (binoculars button on the map).
                 import research
                 status, headers, out = research.handle(method, path, query, self.headers,
-                                                       body, log, self.client_address[0])
+                                                       body, log, client_ip)
             elif path.startswith("/soundpacks/"):
                 # The windstock tweak's "Download packs from server".
                 import soundpacks
@@ -123,12 +198,12 @@ class Handler(BaseHTTPRequestHandler):
                 # The windstock tweak's map weather (effects + icon).
                 import weather
                 status, headers, out = weather.handle(method, path, query, self.headers,
-                                                      body, log, self.client_address[0])
+                                                      body, log, client_ip)
             elif path.startswith("/raid"):
                 # The windstock tweak's raid screens (lobby / HUD / results).
                 import raidlobby
                 status, headers, out = raidlobby.handle(method, path, query, self.headers,
-                                                        body, log, self.client_address[0])
+                                                        body, log, client_ip)
             elif "niantic" in host or path.startswith("/plfe"):
                 status, headers, out = rpc.handle(method, path, query,
                                                   self.headers, body, log)
@@ -139,14 +214,23 @@ class Handler(BaseHTTPRequestHandler):
             import traceback
             log(f"[!] handler error: {e}\n{traceback.format_exc()}")
             status, headers, out = 500, {"Content-Type": "text/plain"}, b"err"
+        self._reply(status, headers, out)
 
+    def _reply(self, status, headers, out):
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
+        # Uploaded photos and the like are served as exactly the type we say.
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(out)))
-        self.end_headers()
-        if out:
-            self.wfile.write(out)
+        # Headers and body leave in ONE write. end_headers() used to flush the
+        # headers on their own and the body followed in a second send; Nagle held
+        # that second packet until the phone ACKed the first, so every answer cost
+        # an extra round trip -- ~160 ms per request from the far side of the world.
+        self._headers_buffer.append(b"\r\n")
+        self._headers_buffer.append(out or b"")
+        self.wfile.write(b"".join(self._headers_buffer))
+        self._headers_buffer = []
 
     def do_GET(self):
         self._dispatch("GET")
@@ -159,30 +243,15 @@ def main():
     if not (os.path.exists(CERT) and os.path.exists(KEY)):
         log("Missing certs. Run:  py gen_certs.py")
         sys.exit(1)
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(CERT, KEY)
     # 0.29-era Mono/BoringSSL clients negotiate older suites; be permissive.
-    try:
-        ctx.minimum_version = ssl.TLSVersion.TLSv1
-        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
-    except (ssl.SSLError, ValueError):
-        pass
+    ctx = netbase.tls_context(CERT, KEY, legacy=True)
 
-    class LoggingHTTPSServer(ThreadingHTTPServer):
-        # socketserver silently swallows SSL handshake failures (except OSError:
-        # return). Log them so we can see WHY a client (e.g. native RPC) is rejected
-        # -- 'bad certificate' => client distrusts our CA; 'unsupported protocol' /
-        # 'no shared cipher' => TLS-version/cipher mismatch.
-        def get_request(self):
-            try:
-                return super().get_request()
-            except ssl.SSLError as e:
-                log(f"[tls] handshake FAILED: {e!r}")
-                raise OSError(str(e)) from e
+    class LoggingHTTPSServer(TLSServer):
+        log = staticmethod(log)
 
     httpd = LoggingHTTPSServer((BIND, PORT), Handler)
     httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True,
-                                   do_handshake_on_connect=True)
+                                   do_handshake_on_connect=False)
     log(f"PoGO private server listening on https://{BIND}:{PORT}")
     log("Routes: *.pokemon.com -> PTC SSO   |   *.nianticlabs.com -> RPC")
     try:

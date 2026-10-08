@@ -1,0 +1,3 @@
+#!/bin/bash
+cd "/Users/mobra/Desktop/Pokemon go private server/work/tools"
+exec /usr/bin/python3 "/Users/mobra/Desktop/Pokemon go private server/work/tools/region_app.py" >> "/Users/mobra/Desktop/Pokemon go private server/work/tools/_osm_cache/region_app.log" 2>&1

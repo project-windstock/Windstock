@@ -43,6 +43,12 @@ def _capture(method, path, query, body):
         return None
     try:
         os.makedirs(CAPTURE_DIR, exist_ok=True)
+        if _seen[0] == 0:
+            # Count what earlier runs left, so the cap is on the FOLDER and a
+            # server that restarts often doesn't add 200 more each time.
+            _seen[0] = len(os.listdir(CAPTURE_DIR))
+            if _seen[0] >= _MAX_CAPTURES:
+                return None
         name = f"{int(time.time() * 1000)}-{_seen[0]:03d}.bin"
         with open(os.path.join(CAPTURE_DIR, name), "wb") as fh:
             fh.write(f"{method} {path}?{query}\n".encode("utf-8", "replace"))

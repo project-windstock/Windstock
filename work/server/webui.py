@@ -3,9 +3,8 @@ Shared look for the web pages this server serves:
 
   World Manager   http://127.0.0.1:8080           (admin.py, this PC only)
   Shop            https://pgorelease.../shop      (shop.py, on the phone)
-  Help Center     https://pokemongo.zendesk.../hc (helpcenter.py, on the phone)
 
-The two PHONE pages (shop, help) are dressed as Pokemon GO itself -- white rounded
+The PHONE page (shop) is dressed as Pokemon GO itself -- white rounded
 cards on a blue-green map wash -- so they don't read as a different program bolted
 onto the game. The World Manager runs only on this PC, is never seen inside the
 game, and is a control panel, so it wears the Bracky identity instead:

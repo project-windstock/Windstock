@@ -45,7 +45,7 @@ CATALOGUE = [
     ("incubatorbasic.1",        "Egg Incubator",       902,   1,  150, "incubator",   0),
     ("itemstorageupgrade.1",    "Bag Upgrade (+50)",     0,  50,  200, "bag",         0),
     ("pokemonstorageupgrade.1", "Pokemon Storage (+50)", 0,  50,  200, "box",         0),
-    ("shinycharm.1",            "Shiny Charm",           0,   1, 1000, "shinycharm",  0),
+    # (the Shiny Charm was sold here until 2026-10-05; removed -- see world.SHINY_CHARM_REFUND)
     ("shinyincense.1",          "Shiny Incense",         0,   1,  180, "shinyincense",0),
 ]
 
@@ -54,7 +54,7 @@ CATALOGUE = [
 # never sold these -- so on a stock client they'd be blank tiles, and they are
 # web-shop only. The iOS client is patched (tools/patch_badges.py adds their art
 # and names to the game data), so there they are in the in-game store too.
-WEB_ONLY = {"shinycharm.1", "shinyincense.1"}
+WEB_ONLY = {"shinyincense.1"}
 PATCHED_PLATFORMS = {"ios"}
 
 # Item art is the REAL 2016 texture, pulled out of the APK's Unity assets
@@ -110,18 +110,17 @@ def grant_special(sku, price):
     """
     import settings as _cfg
     import world
-    if sku not in ("shinycharm.1", "shinyincense.1"):
+    if sku == "shinycharm.1":
+        return False, "The Shiny Charm isn't sold any more."
+    if sku != "shinyincense.1":
         ok, message, _new = world.buy_storage(_storage_kind(sku))
         return ok, message
-    # Both go into the bag now (world.grant_*): checked before the coins are taken.
-    if sku == "shinycharm.1" and world.has_shiny_charm():
-        return False, "You already have the Shiny Charm."
+    # It goes into the bag (world.grant_*): checked before the coins are taken.
     if world.room_in_bag() < 1:
         return False, "Your bag is full."
     if not world.spend_coins(price):
         return False, f"You need {price} Pok\u00e9Coins."
-    ok, message = (world.grant_shiny_charm() if sku == "shinycharm.1" else
-                   world.grant_shiny_incense())
+    ok, message = world.grant_shiny_incense()
     if not ok:
         world.add_coins(price)                     # lost a race; nothing granted
     return ok, message
@@ -340,8 +339,7 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
     <p>Sign in with your trainer name</p></div>
   <div class="field">
     <input id="user" placeholder="Trainer name" autocomplete="off"
-           autocapitalize="off" spellcheck="false" oninput="search()" onfocus="search()">
-    <div id="sugg"></div>
+           autocapitalize="off" spellcheck="false">
   </div>
   <div class="field">
     <input id="pass" type="password" placeholder="Password" autocomplete="off">
@@ -367,7 +365,7 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <script>
 const CAT = __CATALOGUE__, IV = '__ICONV__';
 const $ = id => document.getElementById(id);
-let coins = 0, me = null, accounts = [], timer = null;
+let coins = 0, me = null, token = '', timer = null;
 
 async function api(path, body){
   const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
@@ -379,35 +377,27 @@ function toast(msg, bad){
   clearTimeout(t._t); t._t = setTimeout(function(){ t.className=''; }, 2600);
 }
 /* ---- sign in ---- */
-function search(){
-  const q = $('user').value.trim().toLowerCase();
-  const hits = accounts.filter(function(n){ return !q || n.toLowerCase().includes(q); }).slice(0, 6);
-  const box = $('sugg');
-  box.innerHTML = '';
-  if (!hits.length){ box.style.display='none'; return; }
-  hits.forEach(function(n){
-    const d = document.createElement('div'); d.textContent = n;
-    d.onclick = function(){ $('user').value = n; box.style.display='none'; };
-    box.appendChild(d);
-  });
-  box.style.display = 'block';
-}
 async function signIn(){
   const name = $('user').value.trim();
   if (!name) return toast('Enter your trainer name', true);
   const r = await api('/shop/login', {player: name, password: $('pass').value});
   if (!r.ok) return toast(r.message, true);
-  me = r.player; localStorage.setItem('pogo_shop_who', me);
-  $('sugg').style.display='none';
+  me = r.player; token = r.token;
+  try { localStorage.setItem('pogo_shop_who', me); localStorage.setItem('pogo_shop_token', token); } catch (e) {}
+  showShop();
+}
+function showShop(){
   $('login').style.display='none'; $('app').style.display='block';
   $('whoname').textContent = me;
   refresh();
   if (!timer) timer = setInterval(refresh, 15000);
 }
 function signOut(){
-  localStorage.removeItem('pogo_shop_who');
-  me = null; $('app').style.display='none'; $('login').style.display='flex';
-  $('pass').value=''; search();
+  try { localStorage.removeItem('pogo_shop_token'); } catch (e) {}
+  me = null; token = '';
+  if (timer) { clearInterval(timer); timer = null; }
+  $('app').style.display='none'; $('login').style.display='flex';
+  $('pass').value='';
 }
 /* ---- shop ---- */
 function draw(){
@@ -430,14 +420,16 @@ function draw(){
 }
 async function buy(sku, btn){
   btn.disabled = true;
-  const r = await api('/shop/buy', {sku: sku, player: me});
+  const r = await api('/shop/buy', {sku: sku, token: token});
+  if (r.signed_out) { toast(r.message, true); return signOut(); }
   toast(r.message, !r.ok);
   if (r.coins !== undefined) coins = r.coins;
   draw();
 }
 async function refresh(){
   try {
-    const r = await api('/shop/state', {player: me});
+    const r = await api('/shop/state', {token: token});
+    if (r.signed_out) return signOut();   // session expired or the server restarted
     coins = r.coins || 0; $('coins').textContent = coins;
   } catch (e) { /* keep the shelves up even if the balance cannot be read */ }
   draw();
@@ -445,16 +437,12 @@ async function refresh(){
 // Draw the shelves FIRST. The page used to render nothing at all until the
 // server answered, so any hiccup looked like an empty shop.
 draw();
-(async function(){
-  try {
-    const st = await api('/shop/state', {});
-    accounts = st.accounts || [];
-    const saved = localStorage.getItem('pogo_shop_who');
-    if (saved && accounts.indexOf(saved) >= 0) { $('user').value = saved; $('pass').focus(); }
-    else if (st.player) $('user').value = st.player;
-  } catch (e) {
-    toast('Could not reach the server', true);
-  }
+(function(){
+  let saved = '', tok = '';
+  try { saved = localStorage.getItem('pogo_shop_who') || '';
+        tok = localStorage.getItem('pogo_shop_token') || ''; } catch (e) {}
+  if (saved) $('user').value = saved;
+  if (saved && tok) { me = saved; token = tok; showShop(); }
 })();
 </script></body></html>"""
 
@@ -486,38 +474,38 @@ def handle(method, path, query, headers, body, log):
         d = json.loads(body.decode("utf-8")) if body else {}
     except ValueError:
         d = {}
-    who = (d.get("player") or "").strip()
-    names = world.account_names()
-
-    if path == "/shop/state":
-        # Default to whoever is actually playing, so the phone opens on the
-        # right trainer without anyone having to pick one.
-        import rpc
-        cur = getattr(rpc, "_last_user", [None])[0]
-        target = who if who in names else (cur if cur in names else
-                                           (names[0] if names else None))
-        if not target:
-            return _json({"accounts": [], "coins": 0, "player": None})
-        with world.acting_as(target):
-            return _json({"accounts": names, "player": target,
-                          "coins": world.COINS,
-                          "bag": world.bag_count(), "bag_max": world.MAX_ITEMS})
+    if not isinstance(d, dict):
+        d = {}
+    import helpcenter
 
     if path == "/shop/login":
         # Same credentials as the game: the trainer name is the account and the
         # password is the one set on that account's first login.
-        ok, why, real = world.check_login(who, d.get("password") or "")
+        who = str(d.get("player") or "").strip()
+        ok, why, real = world.check_login(who, str(d.get("password") or ""))
         if not ok:
             log("[shop] sign-in refused for " + repr(who) + " (" + why + ")")
-            msg = ("Wrong password." if why == "wrong password"
-                   else "Enter your trainer name.")
-            return _json({"ok": False, "message": msg})
+            return _json({"ok": False, "message": world.login_message(why)})
         log("[shop] " + real + " signed in")
-        return _json({"ok": True, "player": real})
+        return _json({"ok": True, "player": real,
+                      "token": helpcenter.open_session(real)})
+
+    # Everything else is for a signed-in trainer, and WHO comes from the session
+    # token -- never from the request body, or one player could spend another's
+    # coins by typing their name.
+    who = helpcenter.session_player(d.get("token"))
+    if who is None:
+        return _json({"ok": False, "signed_out": True, "coins": 0,
+                      "message": "Please sign in again."})
+
+    if path == "/shop/state":
+        with world.acting_as(who):
+            return _json({"ok": True, "player": who, "coins": world.COINS,
+                          "bag": world.bag_count(), "bag_max": world.MAX_ITEMS})
 
     if path == "/shop/buy":
         entry = next((e for e in CATALOGUE if e[0] == d.get("sku")), None)
-        if not entry or who not in names:
+        if not entry:
             return _json({"ok": False, "message": "That didn't work."})
         _sku, label, iid, cnt, price, _icon, _was = entry
         price = shop_price(price)

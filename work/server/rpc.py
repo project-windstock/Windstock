@@ -32,14 +32,127 @@ ASSET_BASE_URL = os.environ.get("ASSET_BASE_URL", f"https://{API_HOST}/asset")
 # account of what the game asked for and what we answered, one batch at a time.
 VERBOSE = bool(os.environ.get("LOG_VERBOSE") or os.environ.get("DEBUG"))
 _dump_budget = [8]                 # (verbose only) dump the first N raw envelopes
-_last_loc = [0.0, 0.0]            # last non-zero player location we've seen
-_last_logged_loc = [0.0, 0.0]     # last location we actually PRINTED (de-spam)
-_last_user = [None]               # last trainer to make a request (for /shop)
+# The last location / trainer ANYONE reported. Only the World Manager (the
+# operator, on localhost) reads these; nothing a player can reach does, because
+# on a shared server "the last request" is somebody else.
+_last_loc = [0.0, 0.0]
+_last_user = [None]
+_logged_loc = {}                  # username -> last location we PRINTED (de-spam)
 # Which trainer each phone (by IP) last played as. The tweak's raid screens call
 # /raid/... without the game's login, so this is how raidlobby.py knows who's asking.
 import threading as _threading
 _req_ip = _threading.local()      # set by server.py for the request being handled
 _ip_user = {}
+# The tweak's screens (Research, the Radar map, weather, raids) know who you are only by
+# the IP your game's requests come from. Kept on disk too: a server restart used to
+# forget everyone, and a Radar opened before the game's next request then answered
+# "unknown trainer -- open the game first".
+_IP_USERS_FILE = None
+# An address stops meaning a trainer this long after their game last spoke from
+# it, so a recycled or shared address doesn't keep someone else's identity.
+IP_USER_TTL = 60 * 60
+_ip_seen = {}                     # ip -> time.time() of that trainer's last game request
+_ip_saved = [0.0]
+# username -> time.time() of their last verified game request. The game asks
+# for the map every few seconds while it is open, so "recent" means "playing".
+_user_seen = {}
+ONLINE_WINDOW = 5 * 60
+# The launcher's tunnel adds X-WS-Device (a random secret it made up, sent only
+# inside TLS) to everything from one phone. device -> [trainer, last game request].
+_req_dev = _threading.local()     # set by server.py for the request being handled
+_req_old = _threading.local()      # this request came from a launcher too old for here (online.outdated)
+_dev_user = {}
+DEVICE_TTL = 30 * 24 * 3600
+MAX_DEVICES = 20000
+_DEVICE_OK = None
+
+
+def clean_device(value):
+    """The header's value if it looks like a device id, else None."""
+    global _DEVICE_OK
+    if _DEVICE_OK is None:
+        import re
+        _DEVICE_OK = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
+    value = (value or "").strip()
+    return value if _DEVICE_OK.match(value) else None
+
+
+def _ip_users_file():
+    global _IP_USERS_FILE
+    if _IP_USERS_FILE is None:
+        import datadir
+        _IP_USERS_FILE = os.path.join(datadir.ensure(), "ip_users.json")
+    return _IP_USERS_FILE
+
+
+def _load_ip_users():
+    import json
+    try:
+        with open(_ip_users_file(), encoding="utf-8") as fh:
+            d = json.load(fh)
+        for ip, row in (d.items() if isinstance(d, dict) else ()):
+            # [username, last_seen]; the older file had the bare username, which
+            # carries no age and so is not trusted.
+            if isinstance(row, list) and len(row) == 2 and row[0]:
+                _ip_user[str(ip)] = str(row[0])
+                _ip_seen[str(ip)] = float(row[1])
+    except (OSError, ValueError, TypeError):
+        pass
+    try:
+        with open(_devices_file(), encoding="utf-8") as fh:
+            d = json.load(fh)
+        for dev, row in (d.items() if isinstance(d, dict) else ()):
+            if clean_device(dev) and isinstance(row, list) and len(row) == 2 and row[0]:
+                _dev_user[dev] = [str(row[0]), float(row[1])]
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _devices_file():
+    return os.path.join(os.path.dirname(_ip_users_file()), "devices.json")
+
+
+def _remember_ip(ip, username):
+    """Called only for a request whose login this server has verified."""
+    now = time.time()
+    dev = getattr(_req_dev, "value", None)
+    dev_changed = False
+    if dev:
+        row = _dev_user.get(dev)
+        dev_changed = not row or row[0] != username
+        _dev_user[dev] = [username, now]
+    changed = _ip_user.get(ip) != username or dev_changed
+    _ip_user[ip] = username
+    _ip_seen[ip] = now
+    _user_seen[username] = now
+    if not changed and now - _ip_saved[0] < 300:
+        return
+    _ip_saved[0] = now
+    import json
+    try:
+        for old in [k for k, t in _ip_seen.items() if now - t > IP_USER_TTL]:
+            _ip_seen.pop(old, None)
+            _ip_user.pop(old, None)
+        f = _ip_users_file()
+        with open(f + ".tmp", "w", encoding="utf-8") as fh:
+            json.dump({k: [v, _ip_seen.get(k, 0)] for k, v in _ip_user.items()}, fh)
+        os.replace(f + ".tmp", f)
+        stale = [k for k, row in _dev_user.items() if now - row[1] > DEVICE_TTL]
+        if len(_dev_user) - len(stale) > MAX_DEVICES:      # keep the newest
+            stale += sorted((k for k in _dev_user if k not in stale),
+                            key=lambda k: _dev_user[k][1])[:len(_dev_user) - len(stale) - MAX_DEVICES]
+        for k in stale:
+            _dev_user.pop(k, None)
+        f = _devices_file()
+        fd = os.open(f + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(_dev_user, fh)
+        os.replace(f + ".tmp", f)
+    except OSError:
+        pass
+
+
+_load_ip_users()
 
 
 
@@ -48,8 +161,85 @@ _ip_user = {}
 # their store art (tools/patch_badges.py); on Android they'd be blank tiles.
 USER_PLATFORM = {}
 
+
+import re as _re
+_HOST_OK = _re.compile(r"^[A-Za-z0-9.\-]{1,253}(:\d{1,5})?$")
+
+
+def _wobbles(resp):
+    """How many times the client will rock the ball before a break-out: its
+    Pokeball.GetNumShakes mapping of miss_percent (protocol._escape_miss_percent)."""
+    raw = pb.get(resp, 2, pb.WT_64)
+    miss = struct.unpack("<d", struct.pack("<Q", raw))[0] if raw else 0.0
+    return 3 if miss < 0.15 else 2 if miss < 0.5 else 1 if miss < 0.75 else 0
+
+def _ip_identifies(ip):
+    """May an address alone say who is asking? On loopback (the server on the
+    phone itself) and private networks (home Wi-Fi, a tailnet) every phone has
+    its own address. Over the internet a whole household -- or a whole mobile
+    carrier -- shares one, so there it never counts: the launcher's device id
+    is the only thing that does."""
+    try:
+        import ipaddress
+        a = ipaddress.ip_address(ip)
+        return (a.is_loopback or a.is_private or a.is_link_local
+                or a in ipaddress.ip_network("100.64.0.0/10"))
+    except ValueError:
+        return False
+
+
+def online_count(window=ONLINE_WINDOW):
+    """How many trainers have the game open right now (a count, no names)."""
+    now = time.time()
+    for old in [u for u, t in list(_user_seen.items()) if now - t > IP_USER_TTL]:
+        _user_seen.pop(old, None)
+    return sum(1 for t in list(_user_seen.values()) if now - t <= window)
+
+
+def ip_for_user(username):
+    """The address this trainer most recently played from, or None."""
+    now = time.time()
+    seen = [(_ip_seen.get(ip, 0), ip) for ip, name in list(_ip_user.items()) if name == username]
+    seen = [row for row in seen if now - row[0] <= IP_USER_TTL]
+    return max(seen)[1] if seen else None
+
+
+def user_for_device():
+    """The trainer last logged in to the game from the phone making this
+    request (its launcher tunnel's X-WS-Device), or None. Never by address."""
+    dev = getattr(_req_dev, "value", None)
+    row = _dev_user.get(dev) if dev else None
+    return row[0] if row and time.time() - row[1] <= DEVICE_TTL else None
+
+
 def user_for_ip(ip):
-    return _ip_user.get(ip) if ip else None
+    """Who the tweak's screens (Research, raids, weather, shiny) are talking to.
+
+    A launcher's tunnel marks every request with its own secret device id, and
+    a verified game login on that device says whose it is -- so two phones
+    behind one router are two trainers. Without an id it falls back to the
+    address, where that is safe (see _ip_identifies)."""
+    now = time.time()
+    dev = getattr(_req_dev, "value", None)
+    if dev:
+        row = _dev_user.get(dev)
+        if row and now - row[1] <= DEVICE_TTL:
+            return row[0]
+    if not ip or now - _ip_seen.get(ip, 0) > IP_USER_TTL or not _ip_identifies(ip):
+        return None
+    return _ip_user.get(ip)
+
+
+_incense_logged = {}     # trainer -> the last incense encounter id written to the log
+
+
+def _loc(username):
+    """Where THIS trainer last was, (0, 0) if never seen."""
+    try:
+        import world
+        return world.player_location(username) or (0.0, 0.0)
+    except Exception:
+        return (0.0, 0.0)
 
 
 # The gym each trainer last opened (GET_GYM_DETAILS / START_GYM_BATTLE). The raid screens
@@ -101,6 +291,7 @@ def _build_returns(reqs, username, log):
     # Must happen before any world.* call in the request.
     import world
     world.use(username)
+    here = _loc(username)       # this trainer's own position, never "whoever was last"
     # Bring home any Gym defenders that have served their time and pay the coins.
     # Checked on every batch so it happens while you play, not only on a restart.
     try:
@@ -121,7 +312,7 @@ def _build_returns(reqs, username, log):
         elif rtype == P.RT.GET_MAP_OBJECTS:
             cells, lat, lng = P.parse_get_map_objects(msg)
             if not lat and not lng:                 # map msg had no fix; use the
-                lat, lng = _last_loc                # player's last known location
+                lat, lng = here                     # player's last known location
             returns.append(P.build_get_map_objects_response(cells, lat, lng))
             log(f"      -> GET_MAP_OBJECTS: {len(cells)} cells @ ({lat:.5f},{lng:.5f}) + spawns")
         elif rtype == P.RT.GET_INVENTORY:
@@ -167,12 +358,12 @@ def _build_returns(reqs, username, log):
                 _user_gym[username] = fid
             import world
             returns.append(P.build_gym_details_response(
-                fid, glat or _last_loc[0], glng or _last_loc[1], int(time.time() * 1000)))
+                fid, glat or here[0], glng or here[1], int(time.time() * 1000)))
             log(f"      -> GET_GYM_DETAILS {fid!r} ({len(world.gym_members(fid))} defenders)")
         elif rtype == P.RT.FORT_DEPLOY_POKEMON:
             fid, uid = P.parse_deploy(msg)
             returns.append(P.build_fort_deploy_response(
-                fid, uid, _last_loc[0], _last_loc[1], int(time.time() * 1000)))
+                fid, uid, here[0], here[1], int(time.time() * 1000)))
             import world
             log(f"      -> FORT_DEPLOY_POKEMON {fid!r} pokemon={uid} "
                 f"-> {len(world.gym_members(fid))} at gym")
@@ -272,12 +463,20 @@ def _build_returns(reqs, username, log):
                  2: "one is already burning",
                  3: "you have none"}.get(res, f"result {res}"))
         elif rtype == P.RT.GET_INCENSE_POKEMON:
-            returns.append(P.build_get_incense_pokemon_response())
+            r = P.build_get_incense_pokemon_response()
+            returns.append(r)
+            d = pb.decode(r)
+            if pb.get(d, 1, pb.WT_VARINT) == 1:       # only when one is there: this rides
+                _ie = pb.get(d, 6, pb.WT_64)          # on every request while it burns
+                if _incense_logged.get(username) != _ie:
+                    _incense_logged[username] = _ie
+                    log(f"      -> GET_INCENSE_POKEMON -> #{pb.get(d, 2, pb.WT_VARINT)} "
+                        f"came to the Incense (encounter {_ie})")
         elif rtype == P.RT.ADD_FORT_MODIFIER:
             iid, fid, mlat, mlng = P.parse_add_fort_modifier(msg)
             r = P.build_add_fort_modifier_response(
                 iid, fid, int(time.time() * 1000),
-                mlat or _last_loc[0], mlng or _last_loc[1])
+                mlat or here[0], mlng or here[1])
             returns.append(r)
             res = pb.get(pb.decode(r), 1, pb.WT_VARINT)
             log(f"      -> ADD_FORT_MODIFIER {fid[:12]}... -> " +
@@ -441,6 +640,13 @@ def _build_returns(reqs, username, log):
                 + ("AWARDED_ALREADY (no popup)" if already else "SUCCESS, items granted"))
         elif rtype == P.RT.FORT_SEARCH:
             fid, _, _ = P.parse_fort_request(msg)
+            import anticheat
+            if anticheat.too_fast(username, "spin"):
+                # FortSearchResult 3 = IN_COOLDOWN_PERIOD: "try again later", no items
+                returns.append(pb.Writer().uint(1, 3).to_bytes())
+                log(f"      -> FORT_SEARCH {fid!r} SPEED LOCK "
+                    f"({anticheat.speed_kmh(username) / anticheat.MPH:.0f} mph)")
+                continue
             r = P.build_fort_search_response(fid, int(time.time() * 1000))
             returns.append(r)
             d = pb.decode(r)
@@ -470,6 +676,13 @@ def _build_returns(reqs, username, log):
                  if s else "NOT_FOUND (unknown spawn)"))
         elif rtype == P.RT.CATCH_POKEMON:
             eid, ball, hit, reticle, spin, hitpos = P.parse_catch(msg)
+            import anticheat
+            if anticheat.too_fast(username, "catch"):
+                # CatchStatus 2 = ESCAPE: the ball breaks free; the encounter goes on
+                returns.append(pb.Writer().uint(1, 2).double(2, 0.0).to_bytes())
+                log(f"      -> CATCH_POKEMON {eid} SPEED LOCK "
+                    f"({anticheat.speed_kmh(username) / anticheat.MPH:.0f} mph)")
+                continue
             # Read BEFORE building the response -- the response consumes it.
             import world as _w
             berry = _w.berry_mult(eid)
@@ -490,6 +703,9 @@ def _build_returns(reqs, username, log):
             # or misses, which the encounter simply continues after).
             if _sp and st == 1:
                 _pid = int(_sp["pokemon_id"])
+                if P.is_ditto(eid, _pid):
+                    _pid = P.DITTO                   # it was a Ditto all along
+                    log(f"   [ditto] that #{_sp['pokemon_id']} was a Ditto!")
                 _research(username, "catch", pokemon_id=_pid)
             if _sp and hit and st in (1, 2, 3):          # the game counts throws that land
                 if b:
@@ -500,22 +716,25 @@ def _build_returns(reqs, username, log):
                 except Exception:
                     pass
             if _sp and st in (1, 3):
+                _uid = int(pb.get(_cr, 3, pb.WT_64) or pb.get(_cr, 3, pb.WT_VARINT) or 0)
+                # What was actually caught -- a disguised Ditto is logged as Ditto.
+                _got = (_w.get_caught(_uid) if st == 1 and _uid else None) or _sp
                 _w.log_action({"kind": "catch", "result": 1 if st == 1 else 2,
-                               "pokemon_id": int(_sp["pokemon_id"]),
-                               "cp": int(_sp.get("cp", 0)),
-                               "uid": int(pb.get(_cr, 3, pb.WT_64)
-                                          or pb.get(_cr, 3, pb.WT_VARINT) or 0)})
+                               "pokemon_id": int(_got["pokemon_id"]),
+                               "cp": int(_got.get("cp", 0)),
+                               "uid": _uid})
             log(f"      -> CATCH_POKEMON {eid} ball={ball} hit={hit} "
                 f"reticle={reticle:.2f} hitpos={hitpos:.3f} spin={spin:.2f}"
                 + (f" berry=x{berry:.1f}" if berry and berry > 1.0 else "")
                 + " -> "
                 + {1: "CAUGHT", 2: "broke out", 3: "fled",
                    4: "missed"}.get(st, f"status {st}")
-                + (f" ({b[1]} throw! +{b[2]} XP)" if b and hit and st == 1 else ""))
+                + (f" ({b[1]} throw! +{b[2]} XP)" if b and hit and st == 1 else "")
+                + (f" after {_wobbles(_cr)} wobble(s)" if st in (2, 3) else ""))
         elif rtype == P.RT.FORT_RECALL_POKEMON:
             fid, uid, rlat, rlng = P.parse_fort_recall(msg)
-            r = P.build_fort_recall_response(fid, uid, rlat or _last_loc[0],
-                                             rlng or _last_loc[1])
+            r = P.build_fort_recall_response(fid, uid, rlat or here[0],
+                                             rlng or here[1])
             returns.append(r)
             ok = pb.get(pb.decode(r), 1, pb.WT_VARINT) == 1
             log(f"      -> FORT_RECALL_POKEMON {fid[:12]}... pokemon={uid} -> "
@@ -532,6 +751,12 @@ def _build_returns(reqs, username, log):
             r = P.build_special_encounter_response(eid)
             returns.append(r)
             ok = pb.get(pb.decode(r), 1, pb.WT_VARINT) == 1
+            if ok:
+                import world
+                import shiny as _shiny
+                s = world.get_spawn(eid)
+                if s and _shiny.note_encounter(username, eid, s["pokemon_id"]):
+                    log(f"      *** SHINY #{s['pokemon_id']} (encounter {eid}) ***")
             log(f"      -> {P.rt_name(rtype)} {eid} -> "
                 + ("catch screen" if ok else "NOT_FOUND (unknown spawn)"))
         elif rtype == P.RT.EQUIP_BADGE:
@@ -545,8 +770,15 @@ def _build_returns(reqs, username, log):
             returns.append(P.build_echo_response())
             log("      -> ECHO")
         elif rtype == P.RT.DEBUG_UPDATE_INVENTORY:
-            returns.append(P.build_debug_update_inventory_response(msg))
-            log("      -> DEBUG_UPDATE_INVENTORY -> items granted")
+            # A cheat request any client can send. Off unless the operator
+            # starts the server with ALLOW_DEBUG_RPC=1 (items come from the
+            # World Manager otherwise).
+            if os.environ.get("ALLOW_DEBUG_RPC") == "1":
+                returns.append(P.build_debug_update_inventory_response(msg))
+                log("      -> DEBUG_UPDATE_INVENTORY -> items granted")
+            else:
+                returns.append(pb.Writer().bool_(1, False).to_bytes())
+                log("      -> DEBUG_UPDATE_INVENTORY -> REFUSED (debug requests are off)")
         elif rtype == P.RT.DEBUG_DELETE_PLAYER:
             returns.append(P.build_debug_delete_player_response())
             log("      -> DEBUG_DELETE_PLAYER -> REFUSED (saves are never wiped)")
@@ -554,6 +786,7 @@ def _build_returns(reqs, username, log):
             ulat, ulng = P.parse_player_update(msg)
             if ulat or ulng:
                 _last_loc[0], _last_loc[1] = ulat, ulng
+                here = (ulat, ulng)
                 import world as _wl
                 _wl.set_player_location(ulat, ulng, username)
             # Nearby Pokemon/forts already come from GET_MAP_OBJECTS; an empty
@@ -600,12 +833,54 @@ def handle(method, path, query, headers, body, log):
     if method != "POST" or not body:
         return 405, {"Content-Type": "text/plain"}, b"method not allowed"
 
-    request_id, reqs, fields = P.parse_request_envelope(body)
-    username = P.resolve_username(fields) or "Trainer"
+    try:
+        request_id, reqs, fields = P.parse_request_envelope(body)
+    except Exception:
+        return 400, {"Content-Type": "text/plain"}, b"bad request"
+    username = P.resolve_username(fields)
+    if username and getattr(_req_old, "value", False):
+        # A launcher older than the public server's launcher.min_build (online.py):
+        # back to the login, which tells them to update.
+        log(f"[rpc] REFUSED: {username!r} is on an old launcher -> update needed")
+        try:
+            import online
+            online.note_outdated(username, getattr(_req_ip, "value", None))
+        except Exception:
+            pass
+        return 200, {"Content-Type": "application/binary"}, P.build_response_envelope(
+            status_code=P.STATUS_INVALID_AUTH, request_id=request_id)
+    if not username:
+        # No token or ticket that THIS server signed: not signed in. 102 sends
+        # the client back through the login (which is where the password is
+        # checked) instead of letting it play as whatever name it claims.
+        log("[rpc] REFUSED: no valid login on this request -> client must sign in again")
+        return 200, {"Content-Type": "application/binary"}, P.build_response_envelope(
+            status_code=P.STATUS_INVALID_AUTH, request_id=request_id)
+    try:
+        import siteaccounts as _sa
+        _gone = _sa.refused(username)
+    except Exception:
+        _gone = None
+    if _gone:
+        # Banned on the website, or a reset/deleted save: the token the game
+        # kept is no good any more -- back to the login, where the website says no.
+        log(f"[rpc] REFUSED: {username!r} is {_gone} on the website")
+        return 200, {"Content-Type": "application/binary"}, P.build_response_envelope(
+            status_code=P.STATUS_INVALID_AUTH, request_id=request_id)
+    try:
+        import world as _w
+        _why = _w.phone_refused(username)
+    except Exception:
+        _why = None
+    if _why:
+        # A one-phone (beta) account, and this isn't its phone.
+        log(f"[rpc] REFUSED: {username!r} is locked to one phone ({_why})")
+        return 200, {"Content-Type": "application/binary"}, P.build_response_envelope(
+            status_code=P.STATUS_INVALID_AUTH, request_id=request_id)
     _last_user[0] = username
     _ip = getattr(_req_ip, "value", None)
     if _ip:
-        _ip_user[_ip] = username
+        _remember_ip(_ip, username)
 
     # A blank line + this header frame each request batch, so the log reads as a
     # sequence of "the game asked for X, we answered Y" rather than one endless
@@ -622,13 +897,18 @@ def handle(method, path, query, headers, body, log):
             import world as _w
             _w.use(username)
             _w.set_player_location(ll[0], ll[1], username)
-            _w.add_distance(ll[0], ll[1])
+            import anticheat
+            anticheat.observe(username, ll[0], ll[1])
+            if anticheat.too_fast(username, "walk"):
+                _w.current().LAST_POS = (ll[0], ll[1])     # too fast: this stretch doesn't count
+            else:
+                _w.add_distance(ll[0], ll[1])
         except Exception:
             pass
         # The phone reports its position on EVERY request (a few a second), so
         # only note it when it has actually moved -- otherwise it drowns the log.
-        if _moved_far(ll, _last_logged_loc):
-            _last_logged_loc[0], _last_logged_loc[1] = ll
+        if _moved_far(ll, _logged_loc.get(username, (0.0, 0.0))):
+            _logged_loc[username] = ll
             log(f"   [loc] now at {ll[0]:.5f},{ll[1]:.5f}")
 
     # (verbose) the raw envelope, for the first few batches only.
@@ -641,7 +921,9 @@ def handle(method, path, query, headers, body, log):
     # clients (baked to e.g. bracky.playit.plus): redirecting them to pgorelease
     # would strand them. Unchanged for DNS/VPN clients -- they arrive as pgorelease
     # and get pgorelease back.
-    api_host = (headers.get("Host") or "").strip() or API_HOST
+    api_host = (headers.get("Host") or "").strip()
+    if not _HOST_OK.match(api_host):            # never echo junk into api_url
+        api_host = API_HOST
 
     # Bootstrap handshake: tell the client which host to use from now on.
     # A patched client's RPC base is padded to fill the fixed 32-byte Unity slot
@@ -704,6 +986,7 @@ def handle(method, path, query, headers, body, log):
             log(f"[shop] in-game shop failed: {type(e).__name__}: {e}")
 
     # Normal handling.
+    _t0 = time.perf_counter()
     returns = _build_returns(reqs, username, log)
     env = P.build_response_envelope(
         status_code=P.STATUS_OK,
@@ -712,5 +995,5 @@ def handle(method, path, query, headers, body, log):
         api_url=f"{api_host}{API_PATH}",
         auth_ticket=P.build_auth_ticket(username),
     )
-    log(f"   ({len(returns)} answered)")
+    log(f"   ({len(returns)} answered in {(time.perf_counter() - _t0) * 1000:.0f} ms)")
     return 200, {"Content-Type": "application/binary"}, env

@@ -86,6 +86,11 @@ def effective_rate():
             rate *= max(1.0, _cfg.get("shiny", "incense_multiplier", cast=float))
     except Exception:
         pass
+    try:
+        import events
+        rate *= max(1, events.shiny_mult())            # an event's shiny bonus (Halloween 2x)
+    except Exception:
+        pass
     return max(0.0, min(1.0, rate))
 
 
@@ -211,11 +216,109 @@ def map_state(user):
     return {"guards": guards}
 
 
+def _rgb(text, default):
+    """'#RRGGBB' -> [r, g, b] in 0..1."""
+    t = str(text or "").strip().lstrip("#")
+    try:
+        if len(t) != 6:
+            raise ValueError
+        return [round(int(t[i:i + 2], 16) / 255.0, 4) for i in (0, 2, 4)]
+    except ValueError:
+        return list(default)
+
+
+_TWEAK = {}                     # trainer (or address) -> the last "X-WS-Tweak" it sent
+
+
+def look(theme):
+    """What the map should look like right now, for patched clients (tweak v157+).
+    None outside a Halloween-themed event: night all day, orange fog, tinted light --
+    each from the "halloween" settings, so it can be tuned or switched off live."""
+    if theme != "halloween":
+        return None
+    import settings as S
+
+    def num(key, lo, hi):
+        return max(lo, min(hi, S.get("halloween", key, cast=float)))
+
+    start = num("fog_start", 0.0, 4000.0)
+    return {
+        "night": bool(S.get("halloween", "night_all_day")),
+        "fog": bool(S.get("halloween", "fog")),
+        "fog_color": _rgb(S.get("halloween", "fog_color"), (0.85, 0.41, 0.12)),
+        "fog_start": start,
+        "fog_end": max(start + 1.0, num("fog_end", 1.0, 4000.0)),
+        "fog_sky": bool(S.get("halloween", "fog_sky")),
+        "fog_sky_height": num("fog_sky_height", 2.0, 25.0),
+        "tint": bool(S.get("halloween", "tint")),
+        "tint_color": _rgb(S.get("halloween", "tint_color"), (0.48, 0.24, 1.0)),
+        "tint_amount": num("tint_amount", 0.0, 1.0),
+    }
+
+
+def _marked(user):
+    import world
+    try:
+        with world.acting_as(user) as p:
+            return bool(p.SPOOF)
+    except Exception:
+        return False
+
+
 def handle(method, path, query, headers, body, log, ip=None):
     import rpc
     import world
     user = rpc.user_for_ip(ip)
+    if path == "/shiny/gps":
+        # The GPS panel (work/mods/ios-gps, android-035 gps.js): "spoofing is on/off",
+        # sent when switched and every minute while on. Marks, never blocks (anticheat.py).
+        import urllib.parse
+        import anticheat
+        q = urllib.parse.parse_qs(query or "")
+        if body:
+            q.update(urllib.parse.parse_qs(body.decode("utf-8", "replace")))
+        on = (q.get("on") or ["0"])[0] in ("1", "true", "yes")
+        if user:
+            if on != anticheat.spoofing_now(user):          # a change, not the minutely repeat
+                log(f"[anticheat] {user}: GPS panel says spoofing {'ON' if on else 'off'}")
+            anticheat.report_gps(user, on)
+        # "marks": this server marks spoofers -- the GPS panel warns before switching on
+        body = {"ok": bool(user), "spoofing": on, "marked": bool(user and _marked(user)),
+                "marks": anticheat.enabled()}
+        return 200, {"Content-Type": "application/json", "Cache-Control": "no-store"}, \
+            json.dumps(body).encode("utf-8")
     out = {"species": sorted(species_with_models()), "encounter": None, "shiny_uids": []}
+    try:
+        import events
+        events.for_user(user)           # event times on this trainer's clock...
+        if user:                        # ...which the phone reports (tweak v158+)
+            events.set_tz(user, (headers or {}).get("X-WS-TZ"))
+        tw = str((headers or {}).get("X-WS-Tweak") or "")[:60]      # v160+: its version and sky fog
+        if tw and _TWEAK.get(user or ip) != tw:
+            _TWEAK[user or ip] = tw
+            log(f"[tweak] {user or ip}: v{tw}")
+    except Exception:
+        pass
+    try:
+        import events
+        m, label = events.xp_bonus()
+        out["xp_bonus"] = {"mult": m, "label": label} if m > 1 else None
+        win = events.xp_bonus_window() if m > 1 else None
+        if win:
+            out["xp_bonus"]["start_ms"], out["xp_bonus"]["end_ms"] = win
+    except Exception:
+        out["xp_bonus"] = None
+    try:
+        import events
+        out["buffs"] = events.buffs()           # tweak v146+: one buff per event bonus
+        _ev = events.get()
+        out["theme"] = _ev.get("theme") or ""
+        # theme_look false (Halloween's start): the theme's music at night, but no
+        # forced night, fog or tint -- those come with the finale
+        _look = bool(_ev.get("theme_look", True))
+    except Exception:
+        out["buffs"], out["theme"], _look = [], "", False
+    out["look"] = look(out["theme"]) if _look else None
     if user:
         enc = current_encounter(user)
         if enc:
@@ -223,6 +326,7 @@ def handle(method, path, query, headers, body, log, ip=None):
         world.use(user)
         out["shiny_uids"] = [str(c["uid"]) for c in world.caught() if c.get("shiny")]
         out["charm"] = world.has_shiny_charm()
+        out["spoofer"] = bool(world.current().SPOOF)          # anticheat.py
         out["incense_ms"] = world.shiny_incense_ms_left()
         out["rate"] = effective_rate()
         try:

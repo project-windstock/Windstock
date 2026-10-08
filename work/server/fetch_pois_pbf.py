@@ -21,9 +21,11 @@ A Geofabrik "region" is anything under https://download.geofabrik.de/, e.g.
 "europe/austria", "europe", "north-america/us/california". Extracts are cached in
 tools/_osm_cache and reused. No Overpass, no mirrors, no rate limits.
 """
+import datetime
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +39,22 @@ CACHE = os.path.join(HERE, "_osm_cache")
 GEOFABRIK = "https://download.geofabrik.de/{}-latest.osm.pbf"
 
 
+def _open_dated(region):
+    """The newest dated extract of the last two weeks, opened, or None."""
+    today = datetime.datetime.now(datetime.timezone.utc)
+    for days in range(14):
+        stamp = (today - datetime.timedelta(days=days)).strftime("%y%m%d")
+        url = GEOFABRIK.replace("-latest", "-" + stamp).format(region)
+        req = urllib.request.Request(url, headers={"User-Agent": "pogo-private-server/1.0"})
+        try:
+            r = urllib.request.urlopen(req, timeout=300)
+        except urllib.error.URLError:
+            continue
+        print(f"  -latest is unavailable, using {url}", flush=True)
+        return r
+    return None
+
+
 def _download(region):
     os.makedirs(CACHE, exist_ok=True)
     slug = region.replace("/", "-")
@@ -47,7 +65,15 @@ def _download(region):
     url = GEOFABRIK.format(region)
     print(f"  downloading {url}", flush=True)
     req = urllib.request.Request(url, headers={"User-Agent": "pogo-private-server/1.0"})
-    with urllib.request.urlopen(req, timeout=300) as r, open(path, "wb") as fh:
+    try:
+        r = urllib.request.urlopen(req, timeout=300)
+    except urllib.error.HTTPError as e:
+        # Geofabrik's "-latest" alias sometimes disappears (endless redirect);
+        # the dated file behind it is still there.
+        r = _open_dated(region)
+        if r is None:
+            raise e
+    with r, open(path, "wb") as fh:
         total, got, mark = int(r.headers.get("Content-Length", 0)), 0, 0
         while True:
             chunk = r.read(1 << 20)

@@ -1,14 +1,14 @@
 """
 /radar -- the radar, on a computer.
 
-The Help Center already has one, but it is drawn for a phone inside the game's
-web view. This is the same thing sized for a desktop browser: sign in with your
+The game's Windstock Hub has one (its Radar tab). This is the same thing sized
+for a desktop browser: sign in with your
 trainer name and password, and it sweeps around wherever your phone last told
 the server you were (world.player_location), so it works while the game is
 closed.
 
 Deliberately thin. Login, the sweep, the cooldown (radar.cooldown_seconds,
-0 by default = none), the sprites and the shiny roll all belong to
+20 s by default), the sprites and the shiny roll all belong to
 helpcenter.py, and this page calls the very same
 endpoints a phone would:
 
@@ -73,6 +73,8 @@ PAGE = r"""<!doctype html>
   .foot{color:var(--dim);font-size:12px;margin-top:14px}
   #radar{width:100%;height:auto;display:block}
   .blip{cursor:default}
+  a.way{color:#79d9ff;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
+  a.way:hover{text-decoration:underline}
 </style>
 
 <header>
@@ -109,7 +111,7 @@ PAGE = r"""<!doctype html>
       <h2>Nearby</h2>
       <p class="sub" id="count">—</p>
       <table>
-        <thead><tr><th></th><th>Pokemon</th><th>Distance</th><th>Leaves in</th></tr></thead>
+        <thead><tr><th></th><th>Pokemon</th><th>Distance</th><th>Leaves in</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="foot" id="foot"></div>
@@ -239,9 +241,17 @@ function draw() {
       <td><img src="/hc/mon/${r.pokemon_id}.png" alt="" loading="lazy"></td>
       <td>${esc(r.name)}${r.shiny ? ' <span class="shiny">★</span>' : ""}</td>
       <td>${r.distance_m} m</td>
-      <td class="left">${clock(left)}</td></tr>`;
+      <td class="left">${clock(left)}</td>
+      <td><a class="way" target="_blank" rel="noopener" href="${route(r)}">Directions ↗</a></td></tr>`;
   }).join("");
   tick();
+}
+
+function route(r) {
+  // Walking route from where the phone last reported to the spawn.
+  return "https://www.google.com/maps/dir/?api=1&travelmode=walking"
+       + "&origin=" + scan.lat + "," + scan.lng
+       + "&destination=" + r.lat + "," + r.lng;
 }
 
 function clock(ms) {

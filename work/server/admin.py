@@ -18,6 +18,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 import events as EV
+
+# The event XP bonus (the W buff) is set from the Mac's World Manager only: the copy
+# built into the iPhone launcher (ws_boot sets WS_SERVER_DIR) hides its fields and the
+# Double XP preset.
+XP_EDITOR = not os.environ.get("WS_SERVER_DIR")
 import places as PL
 import webui
 
@@ -33,7 +38,7 @@ GIVEABLE = [(1, "Poke Ball"), (2, "Great Ball"), (3, "Ultra Ball"),
             (701, "Razz Berry"), (401, "Incense"), (301, "Lucky Egg"),
             (501, "Lure Module"), (902, "Egg Incubator"),
             # the shiny pair are bag items now (world.SHINY_CHARM_ITEM / _INCENSE_BAG_ITEM)
-            (402, "Shiny Incense"), (604, "Shiny Charm")]
+            (402, "Shiny Incense")]
 # Eggs sit in the same dropdown ("egg:<km>"), but go to the egg bag
 # (world.give_egg), not the item bag.
 GIVEABLE_EGGS = [("egg:2", "2 km Egg"), ("egg:5", "5 km Egg"), ("egg:10", "10 km Egg")]
@@ -259,8 +264,18 @@ per day. Remove one here if it shouldn't be there.</div>
   <button onclick="setLevel()">Set level</button>
 </div>
 <div class="bar">
+  <input id="walkkm" type="number" value="2" min="0.1" max="100" step="0.1" size="5">
+  <button onclick="walk()">Walk km</button>
+</div>
+<div class="bar">
   <input id="newpw" placeholder="New password" size="14">
   <button onclick="resetPw()">Reset password</button>
+</div>
+<div class="bar">
+  <button onclick="beta('new')" title="New trainer with a generated password that only works on the first phone to sign in">New beta tester</button>
+  <button onclick="beta('lock')">Lock to one phone</button>
+  <button onclick="beta('forget')" title="After a reinstall or a new phone">Forget phone</button>
+  <button onclick="beta('unlock')">Unlock</button>
 </div>
 <div class="hint" id="givehint">Candy goes to the whole evolution family, so Charmander
 candy also powers up Charmeleon and Charizard. Everything shows up in game within a
@@ -281,6 +296,12 @@ few seconds.</div>
   <label class="inline-label">CP
     <input id="ev-min" type="number" min="10" max="5000" size="4"> &ndash;
     <input id="ev-max" type="number" min="10" max="5000" size="4"></label>
+  <span id="ev-xpbox"><label class="inline-label" title="XP multiplier for everyone (stacks with Lucky Eggs); shows as a W buff on the map">XP &times;
+    <input id="ev-xp" type="number" min="1" max="10" step="0.5" size="2"></label>
+  <input id="ev-xplabel" placeholder="2x XP" size="7" maxlength="10" title="text under the W buff (blank = e.g. 2x XP)">
+  <label class="inline-label" title="when a bonus set here switches itself off (blank = never; scheduled events use their own end)">ends
+    <input id="ev-xpuntil" type="datetime-local"></label>
+  <span id="ev-xpstatus" class="hint" style="margin-left:6px"></span></span>
   <button onclick="saveEv()">Apply event</button>
 </div>
 <div class="hint">Density = wild Pokemon around you (0&ndash;60). "One species" + a
@@ -359,8 +380,8 @@ function rDist(m){return m>=1000 ? (m/1000).toFixed(1)+' km' : m+' m';}
 // Who is near it -- everyone in reach, or failing that the closest trainer there
 // is, so a far-off spawn still says something useful instead of nothing.
 function rWho(r){
-  if(r.near.length) return r.near.map(n=>`${n.who} ${rDist(n.m)}`).join(', ');
-  if(r.nearest) return `nearest ${r.nearest.who} ${rDist(r.nearest.m)}`;
+  if(r.near.length) return r.near.map(n=>`${esc(n.who)} ${rDist(n.m)}`).join(', ');
+  if(r.nearest) return `nearest ${esc(r.nearest.who)} ${rDist(r.nearest.m)}`;
   return 'no trainer about';
 }
 function goneIn(ms){
@@ -411,7 +432,7 @@ function rPaint(){
       fillColor:'#2b6cf6',fillOpacity:.04}).addTo(rlayer);
     L.circleMarker([t.lat,t.lng],{radius:7,color:'#fff',weight:3,
       fillColor:'#2b6cf6',fillOpacity:1}).addTo(rlayer)
-      .bindTooltip(t.name+' — '+t.count+' in reach',{permanent:true,direction:'top',
+      .bindTooltip(esc(t.name)+' — '+t.count+' in reach',{permanent:true,direction:'top',
                    className:'rtip',offset:[0,-6]});
   });
   // Shiny labels ride along on the map, but only while there are few enough to
@@ -422,7 +443,7 @@ function rPaint(){
     pts.push([r.lat,r.lng]);
     L.marker([r.lat,r.lng],{icon:rIcon(r),zIndexOffset:r.shiny?1000:0})
       .addTo(rlayer)
-      .bindTooltip((r.shiny?'★ ':'')+r.name+(r.cp?' CP '+r.cp:'')
+      .bindTooltip((r.shiny?'★ ':'')+esc(r.name)+(r.cp?' CP '+(+r.cp):'')
                    +' — '+rWho(r)+' · '+goneIn(r.expires_ms),
                    {permanent:!!r.shiny&&label,direction:'top',
                     className:'rtip'+(r.shiny?' sh':''),
@@ -466,8 +487,11 @@ async function makeStop(){
   h.style.color = r.ok ? '#7fd1a6' : '#ff9a9a';
   load();
 }
+let XP_EDITOR=false;
 async function saveEv(){
-  await post('/api/save',{event_name:$('ev-name').value,spawn_density:+$('ev-density').value,
+  const xp = XP_EDITOR ? {xp_bonus:+$('ev-xp').value||1,xp_bonus_label:$('ev-xplabel').value,
+                          xp_bonus_until:$('ev-xpuntil').value} : {};
+  await post('/api/save',{...xp,event_name:$('ev-name').value,spawn_density:+$('ev-density').value,
     species_mode:$('ev-mode').value,
     species_list:$('ev-list').value.split(',').map(x=>parseInt(x.trim())).filter(x=>x>=1&&x<=151),
     single_species:+$('ev-species').value,
@@ -560,9 +584,9 @@ async function loadNoms(){
     const d = document.createElement('div'); d.className='row';
     d.innerHTML = '<span class="tag ' + (n.kind==='gym'?'gym':'stop') + '">'
       + (n.kind==='gym'?'GYM':'STOP') + '</span>'
-      + '<span class="t"><b>' + n.name + '</b> &mdash; ' + n.lat.toFixed(5) + ', '
-      + n.lng.toFixed(5) + '<br><small style="color:#8892a0">by ' + n.player
-      + (n.note ? ' &middot; ' + n.note : '') + '</small></span>';
+      + '<span class="t"><b>' + esc(n.name) + '</b> &mdash; ' + (+n.lat).toFixed(5) + ', '
+      + (+n.lng).toFixed(5) + '<br><small style="color:#8892a0">by ' + esc(n.player)
+      + (n.note ? ' &middot; ' + esc(n.note) : '') + '</small></span>';
     const no = document.createElement('span');
     no.className='x'; no.textContent='remove';
     no.onclick = function(){ resolveNom(n.id,'rejected'); };
@@ -598,6 +622,11 @@ async function resetPw(){
   giveResult(await post('/api/setpw', {player: who, password: $('newpw').value}));
   $('newpw').value='';
 }
+async function beta(action){
+  const who = $('giveuser').value.trim();
+  if(!who) return giveResult({ok:false, message:'Type which trainer first'});
+  giveResult(await post('/api/beta', {player: who, action: action}));
+}
 async function giveDust(){
   giveResult(await post('/api/give',{player:$('giveuser').value,
     kind:'stardust', count:+$('givedust').value}));
@@ -605,6 +634,10 @@ async function giveDust(){
 async function giveXp(){
   giveResult(await post('/api/give',{player:$('giveuser').value,
     kind:'xp', count:+$('givexp').value}));
+}
+async function walk(){
+  giveResult(await post('/api/give',{player:$('giveuser').value,
+    kind:'walk', km:+$('walkkm').value}));
 }
 async function setLevel(){
   giveResult(await post('/api/give',{player:$('giveuser').value,
@@ -628,6 +661,17 @@ async function load(){
   $('ev-mode').value=c.species_mode; $('ev-list').value=(c.species_list||[]).join(',');
   $('ev-species').value=c.single_species||25;
   $('ev-min').value=c.min_cp; $('ev-max').value=c.max_cp;
+  XP_EDITOR=!!j.xp_editor; $('ev-xpbox').style.display=XP_EDITOR?'':'none';
+  $('ev-xp').value=c.xp_bonus||1; $('ev-xplabel').value=c.xp_bonus_label||'';
+  if(document.activeElement!==$('ev-xpuntil')) $('ev-xpuntil').value=c.xp_bonus_until||'';
+  const xb=j.xp_bonus||{}, st=$('ev-xpstatus');
+  if(!xb.mult){ st.textContent='XP bonus off'; }
+  else if(!xb.end_ms){ st.textContent=xb.label+' on \u2014 no end set'; }
+  else{
+    const left=Math.max(0,xb.end_ms-Date.now()), h=Math.floor(left/3600000), m=Math.floor(left/60000)%60;
+    st.textContent=xb.label+' on \u2014 ends '+new Date(xb.end_ms).toLocaleString([], {weekday:'short',hour:'2-digit',minute:'2-digit'})
+      +' (in '+(h?h+'h ':'')+m+'m)'+(xb.scheduled?' \u00b7 scheduled: '+xb.scheduled:'');
+  }
   if(!$('presets').dataset.done){
     (j.presets||[]).forEach(n=>{const b=document.createElement('button');
       b.textContent=n;b.onclick=()=>preset(n);$('presets').appendChild(b);});
@@ -669,19 +713,22 @@ function draw(){
   if(!map||!layer) return;          // offline: nothing to draw onto
   layer.clearLayers();
   data.forts.forEach(f=>L.marker([f.lat,f.lng],{icon:icon(f.kind==='gym'?'#c0392b':'#2b6cf6',
-    f.kind==='gym'?'G':'S')}).addTo(layer).bindTooltip(f.name).on('click',()=>del(f.id)));
+    f.kind==='gym'?'G':'S')}).addTo(layer).bindTooltip(esc(f.name)).on('click',()=>del(f.id)));
   data.spawns.forEach(s=>L.marker([s.lat,s.lng],{icon:icon(s.pokemon_id?'#1f9d55':'#7a5cc4',s.pokemon_id?String(s.pokemon_id):'?')})
     .addTo(layer).bindTooltip(s.pokemon_id?(DEX[s.pokemon_id]||('#'+s.pokemon_id)):'Random').on('click',()=>del(s.id)));
   const rows=[...data.forts.map(f=>({id:f.id,cls:f.kind==='gym'?'gym':'stop',
       tag:f.kind==='gym'?'GYM':'STOP',
-      t:`${f.name}${f.image?' [photo]':''} — ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}`})),
+      t:`${esc(f.name)}${f.image?' [photo]':''} — ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}`})),
     ...data.spawns.map(s=>({id:s.id,cls:'mon',tag:s.pokemon_id?'MON':'RANDOM',
       t:`${s.pokemon_id?(DEX[s.pokemon_id]||('#'+s.pokemon_id)):'Random Pokemon'} — ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`}))];
   $('list').innerHTML = rows.length ? rows.map(r=>
     `<div class="row"><span class="tag ${r.cls}">${r.tag}</span><span class="t">${r.t}</span>
-     <span class="x" onclick="del('${r.id}')">remove</span></div>`).join('')
+     <span class="x" onclick="del('${esc(r.id)}')">remove</span></div>`).join('')
     : '<div class="empty">Nothing placed yet — click the map above.</div>';
 }
+// Names, notes and trainer names are typed by players. Never put one into
+// markup (innerHTML, a Leaflet tooltip) without this.
+function esc(s){return String(s==null?'':s).replace(/[&<>"'`]/g,c=>'&#'+c.charCodeAt(0)+';');}
 async function post(u,b){return (await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(b||{})})).json();}
 async function place(lat,lng){
@@ -841,9 +888,53 @@ def radar(range_m=1000.0, seed_at=None):
             "ts": int(time.time() * 1000)}
 
 
+def _xp_status():
+    """The running XP bonus for the editor: {mult, label, end_ms, scheduled} or {}."""
+    m, label = EV.xp_bonus()
+    if m <= 1:
+        return {}
+    win = EV.xp_bonus_window()
+    row = EV.active_scheduled() if win else None
+    return {"mult": m, "label": label, "end_ms": win[1] if win else 0,
+            "scheduled": (row or {}).get("name", "") if EV._scheduled_window() else ""}
+
+
+# The World Manager has no login: being on this machine IS the permission. A
+# browser on this machine will happily carry a request here on behalf of any
+# web page, though, so "it came from localhost" is not enough on its own.
+_LOCAL_NAMES = {"127.0.0.1", "localhost", "[::1]"}
+MAX_BODY = 64 * 1024 * 1024         # a sound-pack clip is the largest upload
+
+
 class _Handler(BaseHTTPRequestHandler):
+    timeout = 120
+
     def log_message(self, *a):
         pass
+
+    def _refuse_foreign(self):
+        """True (and a 403 sent) unless this request was made BY the World
+        Manager's own pages.
+
+        * Host must be this machine's name. A hostile site can point its own
+          domain at 127.0.0.1 (DNS rebinding) to read our answers; it cannot
+          make the browser send our Host.
+        * A POST that names an Origin must name ours. Every browser adds Origin
+          to a cross-site POST, so another site's form or fetch() -- the way to
+          reset passwords or hand out items behind the operator's back -- stops here.
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        name = host[:host.index("]") + 1] if host.startswith("[") else host.split(":")[0]
+        ok = name in _LOCAL_NAMES
+        if ok and self.command != "GET":
+            origin = self.headers.get("Origin")
+            site = (self.headers.get("Sec-Fetch-Site") or "same-origin").lower()
+            ok = ((origin is None or origin.lower() == "http://" + host)
+                  and site in ("same-origin", "none"))
+        if not ok:
+            self.close_connection = True
+            self._send(403, "text/plain", "forbidden")
+        return not ok
 
     def _send(self, code, ctype, body):
         if isinstance(body, str):
@@ -859,6 +950,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(code, "application/json", json.dumps(obj))
 
     def do_GET(self):
+        if self._refuse_foreign():
+            return
         p = self.path.split("?")[0]
         if p.startswith("/webassets/"):
             import webassets
@@ -933,7 +1026,10 @@ class _Handler(BaseHTTPRequestHandler):
                 lat, lng = 0.0, 0.0
             import world, settings as CFG
             return self._json({"places": PL.get(), "config": EV.get(),
-                               "presets": list(EV.PRESETS),
+                               "presets": [n for n in EV.PRESETS
+                                           if XP_EDITOR or not EV.secret_preset(n)],
+                               "xp_editor": XP_EDITOR,
+                               "xp_bonus": _xp_status(),
                                "storage": world.storage(),
                                "prices": {
                                    "pokemon_step": CFG.get("storage", "pokemon_upgrade_step"),
@@ -944,8 +1040,16 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(404, "text/plain", "not found")
 
     def do_POST(self):
+        if self._refuse_foreign():
+            return
         p = self.path.split("?")[0]
-        n = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            n = -1
+        if n < 0 or n > MAX_BODY:
+            self.close_connection = True
+            return self._send(413, "text/plain", "too large")
         raw = self.rfile.read(n) if n else b""
         if p == "/api/sp/upload":
             # a raw audio file (not JSON): /api/sp/upload?pack=..&clip=..&name=file.mp3
@@ -956,6 +1060,8 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             d = json.loads(raw or b"{}")
         except ValueError:
+            d = {}
+        if not isinstance(d, dict):
             d = {}
         try:
             if p.startswith("/api/research"):
@@ -1055,6 +1161,21 @@ class _Handler(BaseHTTPRequestHandler):
                                    f" ({len(world.eggs())} eggs now)")
                             if got < want:
                                 msg += f" -- the egg bag filled up after {got}"
+                        elif kind == "walk":
+                            # Testing: credit walked distance as if the trainer had
+                            # walked it. Eggs that reach their distance hatch on the
+                            # game's next request, the same way a real walk does.
+                            km = max(0.0, min(100.0, float(d.get("km", 0) or 0)))
+                            if km <= 0:
+                                return self._json({"ok": False,
+                                                   "message": "walk a positive distance"})
+                            total = world.add_walked_km(km)
+                            ready = sum(1 for e in world.eggs() if e.get("incubator")
+                                        and total - e.get("start_km", 0.0)
+                                        >= e.get("target_km", 0.0))
+                            msg = (f"{target} walked {km:g} km (now {total:.2f} km)"
+                                   + (f" -- {ready} egg{'s' if ready != 1 else ''} will "
+                                      f"hatch on the game's next refresh" if ready else ""))
                         elif kind == "stardust":
                             cnt = max(1, min(999999, int(d.get("count", 1))))
                             total = world.add_stardust(cnt)
@@ -1122,6 +1243,11 @@ class _Handler(BaseHTTPRequestHandler):
                                        "message": f"{who}'s password has been reset"})
                 return self._json({"ok": False,
                                    "message": f"no account called {who!r}"})
+            if p == "/api/beta":
+                import world
+                ok, msg = world.beta_account(d.get("player") or "",
+                                             str(d.get("action") or ""))
+                return self._json({"ok": ok, "message": msg})
             if p == "/api/makestop":
                 # "Spawn a PokeStop in my area" -- first one free, then it costs
                 # coins. Drops a real, spinnable stop at the trainer's location
@@ -1257,6 +1383,8 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def serve(port=8080, host="127.0.0.1"):
+    if host not in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "::"):
+        _LOCAL_NAMES.add(host.lower())      # deliberately bound to another address
     ThreadingHTTPServer((host, port), _Handler).serve_forever()
 
 

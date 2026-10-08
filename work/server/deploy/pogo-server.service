@@ -1,5 +1,5 @@
 [Unit]
-Description=bracky's PoGO 0.29 private server (game 443/tcp + DNS redirect 53/udp)
+Description=bracky's PoGO 0.29 private server (Windstock Online 8888/tcp)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,14 +7,44 @@ Wants=network-online.target
 Type=simple
 # RUN_IP is filled in by setup-vm.sh with the VM's public IP.
 Environment=RUN_IP=REPLACE_WITH_PUBLIC_IP
+# No DNS redirect on a public box: players join through Windstock Online
+# (port 8888). Set to 53 (and open 53/udp) only for the old Wi-Fi DNS method.
+Environment=DNS_PORT=0
+# 80/443 belong to the website (Caddy) on this box. Online mode never dials
+# them -- the launchers send everything to 8888 -- so park the game's own
+# HTTPS port and the 0.35 SSO bridge out of the way.
+Environment=PORT=8443
+# Only the online door faces the internet. The game's own HTTPS port stays on
+# loopback, and the cleartext login bridge (for DNS/VPN setups) is off.
+Environment=BIND=127.0.0.1
+Environment=ONLINE_BIND=0.0.0.0
+Environment=SSO_BRIDGE_PORT=0
+# Invite-only: no new trainers over the network, only the ones made in the
+# World Manager ("New beta tester"). Off for now: uncomment to close sign-ups.
+#Environment=OPEN_SIGNUPS=0
 WorkingDirectory=/opt/pogo
 ExecStart=/usr/bin/python3 /opt/pogo/run.py
 Restart=always
 RestartSec=3
-# Ports 53 and 443 are privileged; run as root (simplest) — this is a
-# single-purpose box. AmbientCapabilities would let it drop root, but keep
-# it simple for a personal server.
-User=root
+# NOT root: this process talks to the whole internet, so a bug in it should
+# reach the game's own folder and nothing else. setup-vm.sh creates the `pogo`
+# user and gives it /opt/pogo. The one root-only thing the server may need --
+# binding a port below 1024 (443, 80, 53) -- is granted on its own.
+User=pogo
+Group=pogo
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/pogo
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
 StandardOutput=journal
 StandardError=journal
 

@@ -14,6 +14,7 @@ km counter, measured from when the task was handed out.
 Tweak API (game host, trainer recognised by phone IP, like the raid/shiny screens):
   GET  /research/state               -> the three tabs, ready to draw
   POST /research/claim {kind, ...}   -> grants the reward, returns the new state
+  POST /research/goal_claim {id, rewards} -> a community goal's reward, once per goal
   GET  /research/art/<file>.png      -> official research art (research_art/)
   GET  /research/pokemon/<n>.png     -> Pokemon icon (fetched once from PokeMiners, cached)
   GET  /research/font/<file>.ttf     -> the game's Lato, so the screens match the game
@@ -262,6 +263,29 @@ def load_config():
         return _fill_ids(cfg)
 
 
+_cfg_cache = {"key": None, "cfg": None}
+
+
+def _stat_key(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _config():
+    """load_config() for READ-ONLY use, re-parsed only when research.json
+    changes. Every catch, spin and throw used to open and parse it. Callers
+    must not modify what this returns (load_config() gives a private copy)."""
+    key = _stat_key(CONFIG_FILE)
+    with _lock:
+        if key is None or _cfg_cache["key"] != key:
+            _cfg_cache["cfg"] = load_config()
+            _cfg_cache["key"] = _stat_key(CONFIG_FILE) if key is not None else None
+        return _cfg_cache["cfg"]
+
+
 def save_config(cfg):
     with _lock:
         for k in DEFAULT_CONFIG:
@@ -284,22 +308,55 @@ def _safe(user):
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in str(user))[:64] or "player"
 
 
+# _safe(user) -> (file stat key, progress dict). The dict is the live copy:
+# everyone who touches progress holds _lock, and _save_progress refreshes the key.
+# A file changed or deleted behind our back (wipe_account) no longer matches
+# its key and is read again.
+_prog_cache = {}
+
+
+def _progress_file(user):
+    return os.path.join(PROGRESS_DIR, _safe(user) + ".json")
+
+
 def _load_progress(user):
+    path = _progress_file(user)
+    key = _stat_key(path)
+    with _lock:
+        hit = _prog_cache.get(path)
+        if hit is not None and key is not None and hit[0] == key:
+            return hit[1]
+        _prog_cache.pop(path, None)
     try:
-        with open(os.path.join(PROGRESS_DIR, _safe(user) + ".json"), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             p = json.load(fh)
     except (OSError, ValueError):
+        p = {}
+    if not isinstance(p, dict):
         p = {}
     p.setdefault("day", "")
     p.setdefault("field", [])            # today's tasks: {id, task, progress, claimed, km0}
     p.setdefault("given", [])            # handed out from the World Manager (kept until claimed)
     p.setdefault("stamps", {"count": 0, "last_day": ""})
     p.setdefault("stories", {})          # storyline id -> {step, progress[], claimed[], step_claimed, done, km0[]}
+    p.setdefault("goals_claimed", [])    # community goal ids already paid out
+    if key is not None:
+        with _lock:
+            _prog_cache[path] = (key, p)
     return p
 
 
 def _save_progress(user, p):
-    _write_json(os.path.join(PROGRESS_DIR, _safe(user) + ".json"), p)
+    path = _progress_file(user)
+    with _lock:
+        try:
+            _write_json(path, p)
+        except OSError:
+            _prog_cache.pop(path, None)
+            raise
+        key = _stat_key(path)
+        if key is not None:
+            _prog_cache[path] = (key, p)
 
 
 def _today():
@@ -326,10 +383,12 @@ def _level(user):
 
 
 def _roll_today(user, p, cfg):
-    """A fresh set of field tasks each day (same set if asked twice the same day)."""
+    """A fresh set of field tasks each day (same set if asked twice the same day).
+    True when it rolled -- the caller should save, or the walking tasks' km0
+    would be taken again (from a later distance) on every load."""
     today = _today()
     if p["day"] == today:
-        return
+        return False
     p["day"] = today
     f = cfg["field"]
     pool = f.get("pool") or []
@@ -344,6 +403,7 @@ def _roll_today(user, p, cfg):
     # keep yesterday's finished-but-unclaimed tasks, like the game does
     keep = [t for t in p["field"] if not t["claimed"] and t["progress"] >= _need(t["task"])]
     p["field"] = keep + tasks
+    return True
 
 
 def _need(task):
@@ -422,9 +482,9 @@ def event(user, kind, n=1, **ctx):
         except Exception:
             ctx["types"] = []
     with _lock:
-        cfg = load_config()
+        cfg = _config()
         p = _load_progress(user)
-        _roll_today(user, p, cfg)
+        rolled = _roll_today(user, p, cfg)
         changed = []            # (key, text, progress, need) for each task that moved
         for t in p["field"] + p["given"]:
             if not t["claimed"] and t["progress"] < _need(t["task"]) and _matches(t["task"], kind, ctx):
@@ -441,8 +501,9 @@ def event(user, kind, n=1, **ctx):
                     st["progress"][i] = min(_need(task), st["progress"][i] + n)
                     changed.append((f"story:{s['id']}:{i}", task_text(task),
                                     st["progress"][i], _need(task)))
-        if changed:
+        if changed or rolled:
             _save_progress(user, p)
+        if changed:
             _bump(user, changed)
 
 
@@ -495,7 +556,7 @@ def _task_view(key, task, progress, claimed):
 
 def state(user):
     with _lock:
-        cfg = load_config()
+        cfg = _config()
         p = _load_progress(user)
         _roll_today(user, p, cfg)
         _apply_walk(user, p, cfg)
@@ -570,25 +631,43 @@ def _grant(user, r, log=None):
         view = reward_view({"kind": "encounter", "species": [pid]})
         view["pokemon_id"] = pid
         view["cp"] = cp
-        view["placed"] = _place_encounter(user, pid, cp)
+        if _store_pokemon(pid, cp):
+            view["stored"] = True
+        else:
+            # No room in storage: it waits at the trainer's feet instead, as before.
+            eid = _place_encounter(user, pid, cp)
+            view["placed"] = bool(eid)
+            if eid:
+                # The phone finds this Pokemon on the map by its id and starts the
+                # encounter. A string: a 64-bit id loses digits as a JSON number.
+                view["encounter_id"] = str(eid)
     if log:
         log(f"[research] {user} got {view['name']} {view.get('label', '')}".rstrip())
     return view
 
 
+def _store_pokemon(pid, cp):
+    """The reward Pokemon goes straight into the trainer's storage, like the starter
+    pick: a new individual, in the Pokedex and the type medals. The game shows it on
+    its next inventory sync. False when storage is full. world.use(user) is done."""
+    import world
+    if world.pokemon_full():
+        return False
+    uid = world.research_uid()                    # 10/10/10 IV floor
+    world.add_caught(uid, pid, cp, reward=True)
+    world.pokedex_caught(pid)
+    world.bump_type(pid)
+    return True
+
+
 def _place_encounter(user, pid, cp):
-    """The reward Pokemon appears at the trainer's feet (only for them) for 30 minutes."""
+    """The reward Pokemon appears at the trainer's feet (only for them) for 30 minutes.
+    Returns its encounter id, or 0 when there is nowhere to put it."""
     import world
     import protocol as P
     loc = world.player_location(user)
-    if not loc:
-        try:
-            import rpc
-            loc = (rpc._last_loc[0], rpc._last_loc[1])
-        except Exception:
-            loc = None
     if not loc or not (abs(loc[0]) > 1e-6 or abs(loc[1]) > 1e-6):
-        return False
+        return 0
     now = int(time.time() * 1000)
     uh = 0
     for ch in user:
@@ -599,14 +678,16 @@ def _place_encounter(user, pid, cp):
     sid = P._hex_id((eid, "research"), 11)
     world.remember_spawn(eid, pid, lat, lng, cp, sid, expires)
     world.add_bonus_spawn(user, eid, pid, cp, lat, lng, expires)
-    return True
+    # The encounter and the catch use this uid, so its IVs clear the research floor.
+    world.reserve_encounter_uid(eid, world.research_uid())
+    return eid
 
 
 def claim(user, data, log=None):
     kind = data.get("kind")
     key = str(data.get("key", ""))
     with _lock:
-        cfg = load_config()
+        cfg = _config()
         p = _load_progress(user)
         _roll_today(user, p, cfg)
         _apply_walk(user, p, cfg)
@@ -681,6 +762,49 @@ def claim(user, data, log=None):
     return out
 
 
+# Community goals (the Windstock Hub): the website decides who helped and when the target
+# was reached; the phone passes the goal's rewards here and we pay them once per goal.
+# The rewards come from the phone, so only the kinds and sizes the site's goal form can
+# produce are accepted.
+_GOAL_LIMITS = {"stardust": 100000, "xp": 100000, "item": 100}
+
+
+def goal_claim(user, data, log=None):
+    gid = str(data.get("id", ""))[:40]
+    rewards = data.get("rewards")
+    if not gid or not isinstance(rewards, list) or not rewards or len(rewards) > 3:
+        return {"ok": False, "error": "bad claim"}
+    clean = []
+    for r in rewards:
+        kind = r.get("kind") if isinstance(r, dict) else None
+        try:
+            n = int(r.get("count", 0))
+        except (TypeError, ValueError, AttributeError):
+            n = 0
+        if kind not in _GOAL_LIMITS or not 0 < n <= _GOAL_LIMITS[kind]:
+            return {"ok": False, "error": "bad reward"}
+        item = {"kind": kind, "count": n}
+        if kind == "item":
+            try:
+                item["item"] = int(r.get("item", 0))
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "bad reward"}
+            if item["item"] not in ITEMS:
+                return {"ok": False, "error": "bad reward"}
+        clean.append(item)
+    with _lock:
+        p = _load_progress(user)
+        if gid in p["goals_claimed"]:
+            return {"ok": True, "already": True, "granted": []}
+        granted = [_grant(user, r, log) for r in clean]
+        p["goals_claimed"].append(gid)
+        p["goals_claimed"] = p["goals_claimed"][-200:]
+        _save_progress(user, p)
+    if log:
+        log(f"[research] {user} claimed community goal {gid}")
+    return {"ok": True, "granted": granted}
+
+
 # --------------------------------------------------------------- World Manager
 def give_field(users, task):
     task = dict(task)
@@ -753,7 +877,19 @@ def _preset_bonuses(cfg):
         out.append("Increased Shiny chance")
     if cfg.get("max_cp", 0) and int(cfg["max_cp"]) > 1500:
         out.append("Higher CP")
-    return out[:4]
+    try:
+        xp, candy, shiny = (float(cfg.get(k) or 1) for k in ("xp_bonus", "candy_bonus", "shiny_bonus"))
+    except (TypeError, ValueError):
+        xp = candy = shiny = 1
+    if xp > 1:
+        out.append(f"{xp:g}x XP")
+    if candy > 1:
+        out.append(f"{candy:g}x Candy")
+    if shiny > 1:
+        out.append(f"{shiny:g}x Shiny chance")
+    if cfg.get("boost_species") and int(cfg.get("boost_mult") or 1) > 1:
+        out.append(cfg.get("boost_label") or "Boosted spawns")
+    return out[:6]
 
 
 def _event_windows(row, now=None, ahead_days=14):
@@ -766,8 +902,19 @@ def _event_windows(row, now=None, ahead_days=14):
     except Exception:
         return []
     out = []
+    # a row that runs all day over a date range (Halloween) is ONE window, not one a day
+    if (sh, sm) == (0, 0) and (eh, em) >= (23, 59) and not row.get("days") \
+            and row.get("from") and row.get("to"):
+        try:
+            start = EV.date_start(row["from"])
+            end = EV.date_start(row["to"]) + 86400
+        except (ValueError, OverflowError):
+            return []
+        if end > now and start < now + ahead_days * 86400:
+            out.append((int(start * 1000), int(end * 1000)))
+        return out
     for day in range(-1, ahead_days):
-        t = time.localtime(now + day * 86400)
+        t = EV.local(now + day * 86400)
         date = time.strftime("%Y-%m-%d", t)
         if row.get("days") and t.tm_wday not in row["days"]:
             continue
@@ -775,7 +922,7 @@ def _event_windows(row, now=None, ahead_days=14):
             continue
         if row.get("to") and date > row["to"]:
             continue
-        base = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+        base = EV.day_start(t.tm_year, t.tm_mon, t.tm_mday)
         start = base + sh * 3600 + sm * 60
         end = base + eh * 3600 + em * 60
         if end <= start:
@@ -795,14 +942,19 @@ def events_view():
     try:
         import events as EV
         presets = EV.PRESETS
-        for row in EV.schedule():
+        for row in EV.seasonal() + EV.schedule():
             if not row.get("enabled", True):
                 continue
             cfg = row.get("cfg") if isinstance(row.get("cfg"), dict) else presets.get(row.get("preset"))
             for start, end in _event_windows(row):
+                # the server inside the iPhone app (WS_SERVER_DIR) keeps the seasonal
+                # events a surprise: no "Coming Up" card, only once they have started
+                if row.get("seasonal") and os.environ.get("WS_SERVER_DIR") and not start <= now_ms < end:
+                    continue
                 rows.append({"title": row.get("name", "Event"), "kind": "event",
                              "preset": row.get("preset", ""), "starts_ms": start, "ends_ms": end,
                              "bonuses": _preset_bonuses(cfg),
+                             "theme": (cfg or {}).get("theme", ""),
                              "active": start <= now_ms < end})
     except Exception:
         pass
@@ -823,7 +975,7 @@ def events_view():
     try:
         import events as EV
         live = EV.get()
-        if str(live.get("event_name", "")) not in ("", "Normal"):
+        if str(live.get("event_name", "")) not in ("", "Normal") and not live.get("scheduled"):
             rows.append({"title": live.get("event_name"), "kind": "event",
                          "preset": "", "starts_ms": 0, "ends_ms": 0,
                          "bonuses": _preset_bonuses(live), "active": True})
@@ -834,10 +986,46 @@ def events_view():
             "soon": [r for r in rows if not r["active"]]}
 
 
+# ------------------------------------------------------------------ nests
+def nests_view(user):
+    """The Hub's NESTS section: the nesting parks near this trainer and when
+    they next migrate (nests.py)."""
+    import nests as NS
+    out = {"server_ms": int(time.time() * 1000), "enabled": NS.enabled(),
+           "migration": NS.migration(), "nests": []}
+    if not out["enabled"]:
+        return out
+    try:
+        import world as _w
+        loc = _w.player_location(user)
+    except Exception:
+        loc = None
+    if not loc:
+        out["message"] = "Walk around a little so the Hub can find the nests near you."
+        return out
+    try:
+        radius = float(_cfg_get("spawns", "nest_list_radius_m", 3000))
+    except (TypeError, ValueError):
+        radius = 3000.0
+    rows = NS.near(loc[0], loc[1], radius_m=max(200.0, min(20000.0, radius)))
+    for r in rows:
+        r["species_name"] = _dex_name(r["species"])
+    out["nests"], out["radius_m"] = rows, int(radius)
+    return out
+
+
+def _cfg_get(section, key, default):
+    try:
+        import settings as _cfg
+        return _cfg.get(section, key)
+    except Exception:
+        return default
+
+
 # ------------------------------------------------------------------ radar
 def radar_view(user, sweep, log=None):
     """The Help Center's radar, for the phone's All Events screen. Same 500 m scan
-    and the same once-a-minute cooldown -- a sweep here counts there, and back."""
+    and the same cooldown -- a sweep here counts there, and back."""
     import helpcenter as HC
     wait = HC.radar_cooldown_left(user)
     base = {"range_m": HC.radar_range_m(), "wait_ms": wait,
@@ -911,6 +1099,8 @@ def handle(method, path, query, headers, body, log, ip=None):
             n = int(os.path.splitext(os.path.basename(rest))[0])
         except ValueError:
             return 404, {"Content-Type": "text/plain"}, b"?"
+        if not 1 <= n <= 1100:      # a real dex number; each new one is fetched and kept
+            return 404, {"Content-Type": "text/plain"}, b"?"
         return _png(_pokemon_icon(n))
     if rest.startswith("font/"):
         f = os.path.join(ART_DIR, "fonts", os.path.basename(rest[5:]))
@@ -919,12 +1109,23 @@ def handle(method, path, query, headers, body, log, ip=None):
         with open(f, "rb") as fh:
             return 200, {"Content-Type": "font/ttf", "Cache-Control": "max-age=86400"}, fh.read()
     user = rpc.user_for_ip(ip)
+    try:
+        import events as _ev
+        _ev.for_user(user)              # event times on this trainer's clock
+    except Exception:
+        pass
     if not user:
         return _json({"error": "unknown trainer -- open the game first"}, 403)
     if rest == "ping":
         n = _notify.get(user) or {"seq": 0, "tasks": {}}
         tasks = list((n.get("tasks") or {}).values())
         out = {"seq": n["seq"], "count": len(tasks), "level": _level(user)}
+        try:
+            import nests as NS
+            if NS.enabled():
+                out["nest_period"] = NS.period()     # the phone toasts when it changes
+        except Exception:
+            pass
         if len(tasks) == 1:                 # the phone draws it with its progress bar
             out["task"] = tasks[0]
         return _json(out)
@@ -932,6 +1133,8 @@ def handle(method, path, query, headers, body, log, ip=None):
         return _json(events_view())
     if rest == "radar":
         return _json(radar_view(user, method == "POST", log))
+    if rest == "nests":
+        return _json(nests_view(user))
     if rest == "map":
         # The radar as a MAP, for the Radar tab in the game. Served from this
         # origin so it needs no login: rpc.user_for_ip already knows who is
@@ -946,12 +1149,18 @@ def handle(method, path, query, headers, body, log, ip=None):
         except (ValueError, UnicodeDecodeError):
             data = {}
         return _json(claim(user, data, log))
+    if rest == "goal_claim" and method == "POST":
+        try:
+            data = json.loads((body or b"{}").decode("utf-8")) or {}
+        except (ValueError, UnicodeDecodeError):
+            data = {}
+        return _json(goal_claim(user, data if isinstance(data, dict) else {}, log))
     return _json({"error": "not found"}, 404)
 
 
 # ------------------------------------------------------------- the map page
 # Shown inside the game, in the Research screen's Radar tab (a web view drawn
-# over Unity). Same sweep, same 500 m, same one-a-minute cooldown as the Help
+# over Unity). Same sweep, same 500 m, same cooldown as the Help
 # Center's radar and the phone's list -- this is the map version of it.
 #
 # Leaflet comes from /webassets on this very origin, never a CDN: the server is
@@ -984,12 +1193,17 @@ MAP_PAGE = r"""<!doctype html>
         background:rgba(255,255,255,.95);border-radius:11px;padding:10px 12px;
         font-size:13px;color:var(--dim);box-shadow:0 2px 10px rgba(0,0,0,.12)}
   .pin{width:46px;height:46px;margin:-23px 0 0 -23px;position:relative}
-  .pin img{width:46px;height:46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+  /* The sprites are buttons, not pictures: a long-press must not open iOS's
+     image preview / Save to Photos menu, so the tap goes to the marker. */
+  .pin img{width:46px;height:46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));
+           pointer-events:none;-webkit-user-drag:none}
+  #map,#map *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   .pin.sh:after{content:"\2605";position:absolute;right:-1px;top:-3px;color:#f2a03d;
                 font-size:17px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
   .leaflet-popup-content{margin:10px 12px;font-size:14px}
   .leaflet-popup-content b{display:block;font-size:15px}
   .leaflet-popup-content span{color:var(--dim);font-size:13px}
+  .leaflet-popup-content i{font-style:normal}
 </style>
 
 <div id="map"></div>
@@ -1002,7 +1216,8 @@ MAP_PAGE = r"""<!doctype html>
 <script>
 if (window.L) L.Icon.Default.prototype.options.imagePath = "/webassets/leaflet/";
 const $ = id => document.getElementById(id);
-let map = null, layer = null, me = null, rows = [], cooldownUntil = 0, ticker = null;
+let map = null, layer = null, me = null, ring = null, rows = [], cooldownUntil = 0, ticker = null;
+let pins = [];                       // [{marker, row}] -- built once per sweep, not per tick
 
 function note(text) {
   if ($("offline")) return;
@@ -1029,17 +1244,18 @@ function ensureMap(lat, lng) {
 
 function drawMe(lat, lng) {
   if (!map) return;
-  if (me) { me.setLatLng([lat, lng]); return; }
+  // Moves with every sweep: the dot AND its range ring follow the trainer.
+  if (me) { me.setLatLng([lat, lng]); ring.setLatLng([lat, lng]); return; }
+  ring = L.circle([lat, lng], {radius: 500, color: "#2b6cf6", weight: 1,
+                               fillColor: "#2b6cf6", fillOpacity: .05}).addTo(map);
   me = L.circleMarker([lat, lng], {radius: 8, color: "#fff", weight: 3,
                                    fillColor: "#2b6cf6", fillOpacity: 1}).addTo(map);
-  L.circle([lat, lng], {radius: 500, color: "#2b6cf6", weight: 1,
-                        fillColor: "#2b6cf6", fillOpacity: .05}).addTo(map);
 }
 
 function icon(r) {
   return L.divIcon({className: "", iconSize: [46, 46],
     html: '<div class="pin' + (r.shiny ? " sh" : "") + '">'
-        + '<img src="/research/pokemon/' + r.pokemon_id + '.png" alt=""></div>'});
+        + '<img src="/research/pokemon/' + r.pokemon_id + '.png" alt="" draggable="false"></div>'});
 }
 
 function left(ms) {
@@ -1047,18 +1263,40 @@ function left(ms) {
   return s <= 0 ? "gone" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 }
 
+function popupText(r, now) {
+  return "<b>" + (r.shiny ? "★ " : "") + r.name + "</b>"
+       + "<span>" + r.distance_m + " m away · leaves in <i class=\"left\">"
+       + left(r.expires_ms - now) + "</i></span>";
+}
+
+// Rebuilt only when a sweep lands. Clearing the layer every second (as this
+// used to) closed whatever popup you had open the moment its timer ticked.
 function draw() {
   if (!map || !layer) return;
-  layer.clearLayers();
+  layer.clearLayers(); pins = [];
   const now = Date.now();
   for (const r of rows) {
     if (r.expires_ms && r.expires_ms < now) continue;
-    L.marker([r.lat, r.lng], {icon: icon(r), zIndexOffset: r.shiny ? 1000 : 0})
-     .addTo(layer)
-     .bindPopup("<b>" + (r.shiny ? "★ " : "") + r.name + "</b>"
-              + "<span>" + r.distance_m + " m away · leaves in "
-              + left(r.expires_ms - now) + "</span>");
+    const marker = L.marker([r.lat, r.lng], {icon: icon(r), zIndexOffset: r.shiny ? 1000 : 0})
+                    .addTo(layer).bindPopup(popupText(r, now));
+    pins.push({marker, row: r});
   }
+}
+
+// Every second: count down the open popup in place, drop what has left.
+function refresh() {
+  const now = Date.now();
+  pins = pins.filter(p => {
+    if (p.row.expires_ms && p.row.expires_ms < now) { layer.removeLayer(p.marker); return false; }
+    // Only the countdown's text changes. Re-setting the popup's whole content every
+    // second (as this used to) re-laid it out and re-panned the map on each tick.
+    if (p.marker.isPopupOpen()) {
+      const el = p.marker.getPopup().getElement();
+      const t = el && el.querySelector(".left");
+      if (t) t.textContent = left(p.row.expires_ms - now);
+    }
+    return true;
+  });
 }
 
 async function call(method) {
@@ -1076,7 +1314,7 @@ async function sweep(auto) {
   if (!d.ok) { $("status").textContent = d.message || "Not ready."; return tick(); }
   if (d.swept) {
     rows = d.rows || [];
-    if (map) map.setView([d.lat, d.lng], map.getZoom() || 17);
+    if (map) map.panTo([d.lat, d.lng]);       // follow the trainer, keep their zoom
     draw();
   }
   tick();
@@ -1092,7 +1330,7 @@ function tick() {
     const sh = live.filter(r => r.shiny).length;
     $("status").innerHTML = "<b>" + live.length + "</b> nearby"
                           + (sh ? " · <b>" + sh + " shiny</b>" : "");
-    draw();
+    refresh();
   }
   ticker = setTimeout(tick, 1000);
 }

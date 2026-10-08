@@ -1,0 +1,37 @@
+[Unit]
+Description=Windbot (Windstock Discord bot: status, leaderboard, events, trading)
+After=network-online.target pogo-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The token lives here and nowhere else (root-only, mode 600):
+#   DISCORD_TOKEN=...
+#   SITE_GAME_KEY=...   (the website's GAME_KEY; install.sh adds it)
+EnvironmentFile=/etc/windbot.env
+Environment=GAME_URL=http://127.0.0.1:8888
+# The Website button under /status.
+Environment=SITE_URL=https://windstock.org
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/windbot-venv/bin/python /opt/windbot/windbot.py
+Restart=always
+RestartSec=10
+# Its own throwaway user: the bot needs the network and nothing on this box.
+DynamicUser=yes
+# /var/lib/windbot: which /status cards to keep up to date.
+StateDirectory=windbot
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

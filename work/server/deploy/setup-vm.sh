@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Run this ONCE on the Oracle Cloud VM after uploading the server to /opt/pogo.
+# Run this ONCE on the VPS (any Ubuntu/Debian root box) after uploading the
+# server to /opt/pogo.
 #
 #   ssh ubuntu@YOUR_PUBLIC_IP
 #   sudo bash /opt/pogo/deploy/setup-vm.sh
 #
-# It installs Python + s2sphere, opens the local firewall for 53/udp and
+# It installs Python + s2sphere, opens the local firewall for 8888/tcp and
 # 443/tcp, installs a systemd service, and starts the server pointed at this
 # box's public IP.
 set -euo pipefail
@@ -33,13 +34,23 @@ apt-get install -y python3 python3-pip curl
 pip3 install --break-system-packages -r "$APP_DIR/deploy/requirements.txt" \
   || pip3 install -r "$APP_DIR/deploy/requirements.txt"
 
-echo "==> Opening the LOCAL firewall (Oracle images block everything but SSH)"
-# Oracle's Ubuntu image ships restrictive iptables rules. Insert allow rules
-# for our two ports, ahead of the default REJECT, and persist them.
-iptables -I INPUT -p tcp --dport 443 -j ACCEPT
-iptables -I INPUT -p udp --dport 53  -j ACCEPT
-apt-get install -y iptables-persistent || true
-netfilter-persistent save || iptables-save > /etc/iptables/rules.v4 || true
+ONLINE_PORT="${ONLINE_PORT:-8888}"
+echo "==> Opening the LOCAL firewall"
+# 8888/tcp is the Windstock Online door (what the launchers connect to).
+# 443/tcp is the old DNS-redirect path's game port. 53/udp stays closed: the
+# service runs with DNS_PORT=0 (an open resolver on the internet gets abused).
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+  ufw allow OpenSSH
+  ufw allow "$ONLINE_PORT"/tcp
+  ufw allow 443/tcp
+else
+  # Oracle's Ubuntu image ships restrictive iptables rules. Insert allow rules
+  # ahead of the default REJECT, and persist them.
+  iptables -I INPUT -p tcp --dport "$ONLINE_PORT" -j ACCEPT
+  iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+  apt-get install -y iptables-persistent || true
+  netfilter-persistent save || iptables-save > /etc/iptables/rules.v4 || true
+fi
 
 echo "==> Making sure nothing else holds port 53"
 # Ubuntu's systemd-resolved listens on 127.0.0.53:53 but NOT on the public
@@ -47,6 +58,11 @@ echo "==> Making sure nothing else holds port 53"
 # fails to bind 53, uncomment the next two lines to free it:
 # systemctl disable --now systemd-resolved || true
 # rm -f /etc/resolv.conf && echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
+echo "==> Creating the unprivileged 'pogo' user the server runs as"
+id pogo >/dev/null 2>&1 || useradd --system --home-dir "$APP_DIR" --shell /usr/sbin/nologin pogo
+chown -R pogo:pogo "$APP_DIR"
+chmod 700 "$APP_DIR/data" 2>/dev/null || true      # saves, password hashes, secret.key
 
 echo "==> Installing systemd service"
 sed "s/REPLACE_WITH_PUBLIC_IP/$PUBLIC_IP/" \
@@ -59,7 +75,8 @@ sleep 2
 echo
 echo "============================================================"
 echo "  Done. Server should be live."
-echo "  Point each phone's Wi-Fi DNS at:  $PUBLIC_IP"
+echo "  Windstock Online address:  $PUBLIC_IP:$ONLINE_PORT"
+echo "    (launcher -> Windstock Online -> type that -> Test connection)"
 echo "  Game server:  https://$PUBLIC_IP:443   (Host-routed)"
 echo
 echo "  Watch live logs:   journalctl -u pogo-server -f"

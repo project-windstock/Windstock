@@ -39,6 +39,47 @@ _lock = threading.RLock()
 _current = threading.local()
 _players = {}                                     # username -> Player
 
+# Batched saves (Player.save): players changed since the last write. Not on a
+# phone (ws_boot sets WS_SERVER_DIR): one trainer, nothing to batch, and iOS
+# can kill the launcher outright with no chance to flush.
+SAVE_DELAY = 0.0 if os.environ.get("WS_SERVER_DIR") else 1.0
+_dirty = set()
+_dirty_lock = threading.Lock()
+_write_lock = threading.Lock()
+_saver = []
+
+
+def flush_saves():
+    """Write every pending save now (shutdown, or anyone who needs the disk current)."""
+    with _dirty_lock:
+        todo = list(_dirty)
+        _dirty.clear()
+    for p in todo:
+        p.save_now()
+
+
+def _start_saver():
+    if _saver:
+        return
+    with _dirty_lock:
+        if _saver:
+            return
+
+        def loop():
+            while True:
+                time.sleep(SAVE_DELAY)
+                try:
+                    flush_saves()
+                except Exception as e:      # never let the save thread die
+                    print(f"[save] flush failed: {e}", flush=True)
+        t = threading.Thread(target=loop, daemon=True, name="windstock-saves")
+        _saver.append(t)
+        t.start()
+
+
+import atexit as _atexit
+_atexit.register(flush_saves)
+
 # TutorialCompletion steps 0..7 (LEGAL_SCREEN..FIRST_TIME_EXPERIENCE_COMPLETE).
 # A trainer who has done all of these skips onboarding; an empty list runs it.
 _TUTORIAL_COMPLETE = [0, 1, 2, 3, 4, 5, 6, 7]
@@ -154,6 +195,7 @@ class Player:
     def __init__(self, username):
         self.username = username
         self.file = os.path.join(SAVES_DIR, _safe_name(username) + ".json")
+        self.gone = False
         self.BAG = dict(_STARTING_BAG)
         self.CAUGHT = []
         self.CANDY = {}
@@ -219,6 +261,12 @@ class Player:
         self.STREAK = {"catch_day": "", "catch_days": 0, "spin_day": "", "spin_days": 0}
         self.BERRIES = {}        # encounter_id -> capture multiplier in effect
         self.PW = ""             # "salt$hash"; empty until the account is claimed
+        # A one-phone account (beta testers): the first launcher that signs in
+        # becomes DEVICE (a hash of its X-WS-Device id) and no other phone gets in.
+        self.LOCK = False
+        self.DEVICE = ""
+        # anticheat.py: {"since", "last", "how", "n"} once marked as a spoofer; {} = not.
+        self.SPOOF = {}
         self.APPLIED = []        # active Lucky Egg / Incense: {item, applied_ms, expires_ms}
         self.SHINY_CHARM = False # bought once in the shop; boosts the shiny rate forever
         # Everything the Medals screen is scored on. The client draws each medal
@@ -261,6 +309,8 @@ class Player:
                 "deleted": {str(k): v for k, v in self.DELETED.items()},
                 "pokedex": {str(k): list(v) for k, v in self.POKEDEX.items()},
                 "team": self.TEAM, "pw": self.PW, "applied": self.APPLIED,
+                "lock": self.LOCK, "device": self.DEVICE,
+                "spoof": self.SPOOF,
                 "shiny_charm": self.SHINY_CHARM,
                 "tutorial": list(self.TUTORIAL), "codename": self.CODENAME,
                 "free_stop_used": self.FREE_STOP_USED,
@@ -277,14 +327,34 @@ class Player:
                 "max_pokemon": self.MAX_POKEMON, "max_items": self.MAX_ITEMS}
 
     def save(self):
-        try:
-            os.makedirs(SAVES_DIR, exist_ok=True)
-            tmp = self.file + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(self.snapshot(), fh, indent=1)
-            os.replace(tmp, self.file)     # atomic; never a half-written save
-        except OSError:
-            pass                           # a failed save must never break play
+        """Persist soon. One catch or spin used to rewrite the whole save several
+        times over, synchronously; now changes are batched and written by the
+        save thread within SAVE_DELAY seconds (flush_saves() on shutdown). A
+        trainer with no file yet is written at once, so "does this account
+        exist" checks on disk stay true from the first moment."""
+        if self.gone:
+            return                         # wiped (wipe_account): never write it back
+        if not SAVE_DELAY or not os.path.exists(self.file):
+            self.save_now()
+            return
+        with _dirty_lock:
+            _dirty.add(self)
+        _start_saver()
+
+    def save_now(self):
+        with _lock:                        # a consistent picture, not one mid-change
+            if self.gone:
+                return
+            text = json.dumps(self.snapshot(), indent=1)
+        with _write_lock:
+            try:
+                os.makedirs(SAVES_DIR, exist_ok=True)
+                tmp = self.file + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+                os.replace(tmp, self.file)  # atomic; never a half-written save
+            except OSError:
+                pass                       # a failed save must never break play
 
     def load_from(self, path):
         try:
@@ -351,8 +421,11 @@ class Player:
         self.FREE_STOP_USED = bool(d.get("free_stop_used", False))
         self.LAST_DEFENDER_BONUS = int(d.get("last_defender_bonus", 0) or 0)
         self.PW = str(d.get("pw", "") or "")
+        self.LOCK = bool(d.get("lock", False))
+        self.DEVICE = str(d.get("device", "") or "")
+        self.SPOOF = d.get("spoof") if isinstance(d.get("spoof"), dict) else {}
         self.APPLIED = [a for a in (d.get("applied") or []) if isinstance(a, dict)]
-        self.SHINY_CHARM = bool(d.get("shiny_charm", False))
+        self.SHINY_CHARM = False
         self.EGGS = [e for e in (d.get("eggs") or []) if isinstance(e, dict)]
         inc = [i for i in (d.get("incubators") or []) if isinstance(i, dict)]
         if inc:
@@ -431,6 +504,12 @@ class Player:
         self.LEVEL = level_for_xp(self.XP)
         if not self.CLAIMED_LEVELS:      # pre-existing save: don't replay old popups
             self.CLAIMED_LEVELS = list(range(1, self.LEVEL + 1))
+        # The Shiny Charm was removed (2026-10-05): take it back and refund it, once.
+        if d.get("shiny_charm") or self.BAG.get(SHINY_CHARM_ITEM, 0) > 0:
+            self.BAG.pop(SHINY_CHARM_ITEM, None)
+            self.COINS += SHINY_CHARM_REFUND
+            self._refunded_charm = True
+            print(f"[shop] {self.username}: Shiny Charm removed, +{SHINY_CHARM_REFUND} coins back", flush=True)
         return True
 
 
@@ -455,9 +534,13 @@ def new_uid(seed=0):
     duplicates while the rest kept it on screen.
     """
     p = current()
+    # The trainer goes into the id too: two trainers catching the same shared
+    # spawn used to get the SAME id, and one deploying it to a gym made the other's
+    # copy read as deployed (and stuck) as well.
+    who = int.from_bytes(hashlib.sha1(p.username.encode("utf-8")).digest()[:4], "big")
     with _lock:
         used = {int(c.get("uid", 0)) for c in p.CAUGHT} | set(p.DELETED)
-        base = (int(seed) ^ 0xC0FFEE) & 0x3FFFFFFFFFFFFFFF
+        base = (int(seed) ^ 0xC0FFEE ^ (who << 28)) & 0x3FFFFFFFFFFFFFFF
         return base if base and base not in used else _fresh_uid(used)
 
 
@@ -503,6 +586,7 @@ def use(username):
             # testing). Every save goes through os.replace, so the file never
             # vanishes by itself -- drop the in-memory copy, or its next save()
             # would quietly write all the old progress straight back.
+            p.gone = True                  # nor may a pending batched save
             _players.pop(name, None)
             p = None
         if p is None:
@@ -510,6 +594,8 @@ def use(username):
             path = os.path.join(SAVES_DIR, _safe_name(name) + ".json")
             if os.path.exists(path):
                 p.load_from(path)
+                if getattr(p, "_refunded_charm", False):
+                    p.save()                # the charm refund, written so it happens once
             else:
                 # No save for this account yet. If the old single-player save.json
                 # is still around and nobody has claimed it, adopt it so an
@@ -537,6 +623,34 @@ def use(username):
             _players[name] = p
     _current.player = p
     return p
+
+
+def wipe_account(name):
+    """Delete trainer `name`'s save and research progress (a profile reset or
+    deleted on the Windstock website). Anyone playing it right now keeps the
+    in-memory copy only for the request in flight: it is dropped here and never
+    saved again, so their next request starts from nothing. True when there
+    was something to delete."""
+    key = _safe_name(name)
+    found = False
+    with _lock:
+        for n in [n for n in _players if _safe_name(n) == key]:
+            _players.pop(n).gone = True
+            found = True
+        try:
+            os.remove(os.path.join(SAVES_DIR, key + ".json"))
+            found = True
+        except OSError:
+            pass
+    try:
+        import research
+        want = research._safe(name).lower()
+        for fn in os.listdir(research.PROGRESS_DIR):
+            if fn.endswith(".json") and fn[:-5].lower() == want:
+                os.remove(os.path.join(research.PROGRESS_DIR, fn))
+    except (OSError, ImportError, AttributeError):
+        pass
+    return found
 
 
 def current():
@@ -593,6 +707,7 @@ GYMS = {}                          # fort_id -> [{uid, pokemon_id, cp, trainer, 
 # Shared across accounts, saved alongside GYMS in gyms.json.
 PRESTIGE = {}
 GYM_LEVELS = (0, 2000, 4000, 8000, 12000, 16000, 20000, 30000, 40000, 50000)
+GYM_PRESTIGE_CAP = 52000
 BATTLES = {}                       # battle_id -> live battle state
 SPAWNS = {}                        # transient
 DESPAWNED = {}                     # encounter_id -> expiry_ms
@@ -637,7 +752,7 @@ def save_gyms():
         tmp = GYMS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump({"gyms": GYMS, "prestige": PRESTIGE,
-                       "npc_cleared": NPC_CLEARED}, fh, indent=1)
+                       "npc_cleared": NPC_CLEARED, "returns": RETURNS}, fh, indent=1)
         os.replace(tmp, GYMS_FILE)
     except OSError:
         pass
@@ -665,6 +780,10 @@ def load_gyms():
         NPC_CLEARED.clear()
         NPC_CLEARED.update({k: int(v) for k, v in (d.get("npc_cleared") or {}).items()
                             if isinstance(v, (int, float))})
+        RETURNS.clear()
+        RETURNS.update({k: [r for r in v if isinstance(r, list) and len(r) == 5]
+                        for k, v in (d.get("returns") or {}).items()
+                        if isinstance(v, list)})
         _backfill_prestige()
         return True
     except (OSError, ValueError):
@@ -950,7 +1069,7 @@ def stats():
 
 def add_xp(n):
     p = current()
-    n = int(n) * xp_multiplier()          # Lucky Egg
+    n = int(int(n) * xp_multiplier() + 0.5)   # Lucky Egg / event bonus (1.5x rounds half up)
     with _lock:
         p.XP += n
         p.LEVEL = level_for_xp(p.XP)
@@ -1012,6 +1131,25 @@ def claim_badge(badge_type, rank):
 def avatar():
     with _lock:
         return dict(current().AVATAR)
+
+
+def owner_avatar(owner):
+    """Another trainer's saved look (by login name): live if they are loaded, else
+    read from their save. {} = never customised (the default look)."""
+    if not owner:
+        return {}
+    with _lock:
+        p = _players.get(owner)
+        if p is not None:
+            return dict(p.AVATAR)
+    try:
+        path = os.path.join(SAVES_DIR, _safe_name(owner) + ".json")
+        with open(path, encoding="utf-8") as fh:
+            av = json.load(fh).get("avatar")
+        return {str(k): int(v) for k, v in av.items()
+                if str(v).lstrip("-").isdigit()} if isinstance(av, dict) else {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
 
 
 def avatar_ask(on=None):
@@ -1077,34 +1215,313 @@ def add_candy(family, n):
     return out
 
 
-def _hash_pw(password, salt=None):
+PW_ITERATIONS = 200_000
+
+
+def _hash_pw(password, salt=None, iterations=PW_ITERATIONS):
     """PBKDF2 -- passwords are never stored in the clear, not even on a server
-    that only your family can reach."""
-    salt = salt or os.urandom(8).hex()
+    that only your family can reach. Stored as "pbkdf2$<iterations>$<salt>$<hash>"."""
+    salt = salt or os.urandom(16).hex()
     h = hashlib.pbkdf2_hmac("sha256", (password or "").encode("utf-8"),
-                            salt.encode("ascii"), 60000).hex()
-    return f"{salt}${h}"
+                            salt.encode("ascii"), iterations).hex()
+    return f"pbkdf2${iterations}${salt}${h}"
+
+
+def _pw_matches(stored, password):
+    """(matches, needs_rehash). Understands the older "salt$hash" (60,000
+    rounds) so nobody has to reset; those are upgraded on the next good login."""
+    try:
+        if stored.startswith("pbkdf2$"):
+            _, iters, salt, _h = stored.split("$")
+            iters = int(iters)
+            return (hmac.compare_digest(stored, _hash_pw(password, salt, iters)),
+                    iters < PW_ITERATIONS)
+        salt, want = stored.split("$", 1)
+        got = hashlib.pbkdf2_hmac("sha256", (password or "").encode("utf-8"),
+                                  salt.encode("ascii"), 60000).hex()
+        return hmac.compare_digest(want, got), True
+    except (ValueError, UnicodeError):
+        return False, False
+
+
+MIN_PASSWORD = 6            # for accounts made over the network
+MAX_PASSWORD = 256
+
+
+def _name_ok(name):
+    """A NEW trainer name: letters, digits, spaces and . _ - @ + (an email
+    works). Keeps markup and control characters out of every page and log that
+    shows a name."""
+    return (0 < len(name) <= 48 and any(c.isalnum() for c in name)
+            and all(c.isalnum() or c in " ._-@+" for c in name))
+
+
+def _server_full():
+    """Has the server reached settings.server.max_accounts? Every account is a
+    save file and signing up is free, so this is what bounds the disk."""
+    try:
+        cap = int(_cfg.get("server", "max_accounts"))
+        if cap <= 0:
+            return False
+        return sum(1 for f in os.listdir(SAVES_DIR) if f.endswith(".json")) >= cap
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
+
+
+def _invite_only(ip):
+    """settings.server.open_signups is off (or OPEN_SIGNUPS=0) and this request
+    came over the network: no new trainers, and no claiming a save that never
+    had a password -- only accounts the operator made get in."""
+    import auth
+    if auth.is_local(ip):
+        return False
+    try:
+        return not _cfg.get("server", "open_signups", env="OPEN_SIGNUPS",
+                            cast=lambda v: str(v).strip().lower()
+                            not in ("0", "false", "no", "off", "closed"))
+    except Exception:
+        return False
+
+
+def login_message(why, taken=False):
+    """What to tell the person, for check_login()'s reason."""
+    return {
+        "wrong password": ("That trainer name is already taken and the password "
+                           "doesn't match." if taken else "Wrong password."),
+        "too many attempts": "Too many attempts. Wait a few minutes and try again.",
+        "bad name": "Use letters and numbers for a new trainer name.",
+        "weak password": f"Pick a password of at least {MIN_PASSWORD} characters.",
+        "too many accounts": "Too many new trainers from this network today.",
+        "server full": "This server is not taking new trainers right now.",
+        "no username": "Enter your trainer name.",
+        "email": "Email sign-in is only for the Windstock server. Use a trainer "
+                 "name and password here.",
+        "invite only": "This server is invite-only right now. Ask the host for "
+                       "a tester account.",
+        "other phone": "This trainer is locked to another phone.",
+        "no phone": "This trainer can only sign in from the Windstock launcher "
+                    "(Windstock Online).",
+        "not registered": "You're not registered yet. Tap Register to sign up" + _register_hint()
+                          + ", pick a game username on your profile there, then sign in here with it.",
+        "site down": "Can't check your login right now. Try again in a minute.",
+        "banned": "This trainer has been banned from Windstock.",
+    }.get(why, "Unable to log in with the details provided.")
+
+
+def _register_hint():
+    import siteaccounts
+    return siteaccounts.register_hint()
+
+
+def _site_login(email, password, ip):
+    """check_login() for a server whose logins live on the Windstock website
+    (siteaccounts.py): the website checks the email and password and names the
+    save. The save carries no password of its own."""
+    import auth
+    import siteaccounts
+    handle, why = siteaccounts.check(email, password, ip)
+    if not handle:
+        if why == "wrong password":
+            auth.login_failed(email, ip)
+        return False, why, None
+    path = os.path.join(SAVES_DIR, _safe_name(handle) + ".json")
+    new = not os.path.exists(path)
+    if new and _server_full():
+        return False, "server full", None
+    prev = getattr(_current, "player", None)
+    try:
+        p = use(handle)
+        if p.PW != siteaccounts.PW_MARK:
+            p.PW = siteaccounts.PW_MARK
+            p.save()
+        why = _phone_gate(p)
+        if why:
+            return False, why, handle
+        return True, "claimed" if new else "ok", handle
+    finally:
+        _current.player = prev
 
 
 def check_login(username, password):
     """(ok, reason, name). The FIRST login for a name claims it and sets the
     password; after that the password has to match. An unknown name is claimed
-    rather than refused, so a new trainer can just sign in and start playing."""
+    rather than refused, so a new trainer can just sign in and start playing.
+
+    Where the Windstock website holds the logins (siteaccounts.py, the public
+    server), an email -- or the game username a profile picked there -- is
+    checked there instead and nothing new can be claimed here. Trainers made
+    before that keep signing in with their name and password.
+
+    Guessing is throttled per address and per name, and claiming a new name
+    over the network needs a real password and is rationed per address (auth.py)."""
+    import auth
     name = (username or "").strip()
+    password = password or ""
     if not name:
         return False, "no username", None
-    real = next((n for n in account_names() if n.lower() == name.lower()), name)
+    if len(name) > 64 or len(password) > MAX_PASSWORD:
+        return False, "bad name" if len(name) > 64 else "wrong password", None
+    ip = auth.client_ip()
+    if auth.login_blocked(name, ip):
+        return False, "too many attempts", None
+    import siteaccounts
+    # A server hosted on a PC (localhost): no emails and no sign-up rules --
+    # type a trainer name and password and that is the account, made on first
+    # use. Emails are Windstock website accounts. WS_SERVER_DIR = the
+    # launcher's built-in server on a phone, which keeps its own rules.
+    pc = not siteaccounts.logins() and not os.environ.get("WS_SERVER_DIR")
+    if pc and "@" in name:
+        return False, "email", None
+    site = siteaccounts.logins() and not auth.is_local(ip)
+    if site and "@" in name:
+        return _site_login(name, password, ip)
+    known = next((n for n in account_names() if n.lower() == name.lower()), None)
+    real = known or name
+    weak = not password or (len(password) < MIN_PASSWORD and not auth.is_local(ip))
+    if known is None and not os.path.exists(
+            os.path.join(SAVES_DIR, _safe_name(name) + ".json")):
+        # Nothing on disk under this name: this login would CREATE an account.
+        # Refuse before use() so a turned-away name leaves nothing behind.
+        if site:
+            # sign-ups are on the website; there a profile picks a game username
+            # (letters and numbers -- the game's login box won't type "@" or ".")
+            return _site_login(name, password, ip)
+        if not _name_ok(name):
+            return False, "bad name", None
+        if not pc:
+            if _invite_only(ip):
+                return False, "invite only", None
+            if weak:
+                return False, "weak password", None
+            if not auth.claim_allowed(ip):
+                return False, "too many accounts", None
+            if _server_full():
+                return False, "server full", None
     prev = getattr(_current, "player", None)
     try:
         p = use(real)
         if not p.PW:
+            if site:
+                return False, "not registered", real
+            if not pc and _invite_only(ip):
+                return False, "invite only", real
+            if not pc and weak:
+                return False, "weak password", real
             p.PW = _hash_pw(password)
             p.save()
+            if not pc:
+                auth.claimed(ip)
             return True, "claimed", real
-        salt = p.PW.split("$", 1)[0]
-        if hmac.compare_digest(p.PW, _hash_pw(password, salt)):
+        ok, stale = _pw_matches(p.PW, password)
+        if ok:
+            why = _phone_gate(p)
+            if why:
+                return False, why, real
+            if stale:
+                p.PW = _hash_pw(password)
+                p.save()
             return True, "ok", real
+        auth.login_failed(name, ip)
         return False, "wrong password", real
+    finally:
+        _current.player = prev
+
+
+def _this_phone():
+    """The launcher device id on the request being handled (set by server.py)."""
+    import sys
+    rpc = sys.modules.get("rpc")
+    return getattr(getattr(rpc, "_req_dev", None), "value", None) if rpc else None
+
+
+def _phone_gate(p):
+    """None if this request may use account `p`, else why not. A one-phone
+    account takes the first launcher that shows up with the right login and
+    refuses every other one -- so handing the password on gets nobody in."""
+    if not p.LOCK:
+        return None
+    dev = _this_phone()
+    if not dev:
+        return "no phone"
+    mark = hashlib.sha256(dev.encode("ascii")).hexdigest()
+    with _lock:
+        if not p.DEVICE:
+            p.DEVICE = mark
+            bound = True
+        else:
+            bound = False
+            if not hmac.compare_digest(p.DEVICE, mark):
+                return "other phone"
+    if bound:
+        p.save()
+    return None
+
+
+def phone_refused(username):
+    """rpc.py, on every game request: is this signed-in trainer a one-phone
+    account being played from a phone that isn't the one? (A token copied off
+    the right phone is no better than the password.)"""
+    with _lock:
+        p = _players.get(username)
+    if p is None:
+        prev = getattr(_current, "player", None)
+        try:
+            p = use(username)
+        finally:
+            _current.player = prev
+    return _phone_gate(p)
+
+
+def beta_password():
+    """A password to hand a tester: 12 characters nobody mixes up, in groups."""
+    import secrets
+    abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "-".join("".join(secrets.choice(abc) for _ in range(4)) for _ in range(3))
+
+
+def beta_account(username, action):
+    """World Manager: one-phone (beta tester) accounts. (ok, message).
+
+      new    -- create the trainer with a fresh password, locked to the first phone
+      lock   -- make an existing trainer one-phone (the next sign-in picks the phone)
+      forget -- keep it one-phone but let the next sign-in pick a new phone
+      unlock -- back to an ordinary account
+    """
+    name = (username or "").strip()
+    real = next((n for n in account_names() if n.lower() == name.lower()), None)
+    prev = getattr(_current, "player", None)
+    try:
+        if action == "new":
+            if real or os.path.exists(os.path.join(SAVES_DIR, _safe_name(name) + ".json")):
+                return False, f"{real or name!r} already exists -- use Lock to one phone"
+            if not _name_ok(name):
+                return False, login_message("bad name")
+            if _server_full():
+                return False, login_message("server full")
+            pw = beta_password()
+            p = use(name)
+            p.PW, p.LOCK, p.DEVICE = _hash_pw(pw), True, ""
+            p.save()
+            return True, (f"Beta trainer {name!r} created. Password: {pw}  -- shown "
+                          f"once. It locks to the first phone that signs in.")
+        if not real:
+            return False, f"no account called {name!r}"
+        p = use(real)
+        if action == "lock":
+            p.LOCK, p.DEVICE = True, ""
+            msg = f"{real} is now a one-phone account; the next sign-in picks the phone"
+        elif action == "forget":
+            if not p.LOCK:
+                return False, f"{real} is not a one-phone account"
+            p.DEVICE = ""
+            msg = f"{real}'s phone forgotten; the next sign-in picks the new one"
+        elif action == "unlock":
+            p.LOCK, p.DEVICE = False, ""
+            msg = f"{real} can sign in from any phone again"
+        else:
+            return False, "unknown action"
+        p.save()
+        return True, msg
     finally:
         _current.player = prev
 
@@ -1234,6 +1651,16 @@ def km_walked():
     return float(current().STATS.get("km_walked", 0.0) or 0.0)
 
 
+def add_walked_km(km):
+    """Credit distance directly (the World Manager's test walk). Returns the total."""
+    p = current()
+    with _lock:
+        p.STATS["km_walked"] = km_walked() + float(km)
+        total = p.STATS["km_walked"]
+    p.save()
+    return total
+
+
 def add_distance(lat, lng):
     """Accumulate real walked distance from successive GPS fixes.
 
@@ -1312,6 +1739,50 @@ def use_incubator(incubator_id, egg_uid):
     return 1, dict(inc)
 
 
+def _hatch_uid(used):
+    """A fresh uid whose IVs clear eggs.iv_floor. A Pokemon's IVs are derived from its
+    uid (protocol._ivs) everywhere -- bag, gyms, battles, other accounts -- so picking
+    the uid is what gives a hatchling the 10/10/10 floor of the real game instead of
+    the 0-15 roll a wild catch gets. ~5% of uids pass a floor of 10, so this is a few
+    dozen draws at most."""
+    try:
+        floor = max(0, min(15, int(_cfg.get("eggs", "iv_floor", cast=int))))
+    except Exception:
+        floor = 10
+    return _floored_uid(used, floor)
+
+
+def _floored_uid(used, floor):
+    """A fresh unused uid whose three IVs are each at least `floor`."""
+    import protocol
+    for _ in range(5000):
+        uid = _fresh_uid(used)
+        if min(protocol._ivs(uid)) >= floor:
+            return uid
+    return uid
+
+
+def research_uid():
+    """A fresh uid for a research reward Pokemon: IVs clear pokemon.research_iv_floor
+    (10/10/10 by default), like eggs do, instead of a wild catch's 0-15 roll."""
+    try:
+        floor = max(0, min(15, int(_cfg.get("pokemon", "research_iv_floor", cast=int))))
+    except Exception:
+        floor = 10
+    p = current()
+    with _lock:
+        used = {int(c.get("uid", 0)) for c in p.CAUGHT} | set(p.DELETED)
+    return _floored_uid(used, floor)
+
+
+def reserve_encounter_uid(encounter_id, uid):
+    """Fix the uid an encounter will show and be caught as (research rewards)."""
+    with _lock:
+        if len(ENCOUNTER_UIDS) > 5000:
+            ENCOUNTER_UIDS.clear()
+        ENCOUNTER_UIDS[(current().username, int(encounter_id))] = uid
+
+
 def check_hatches(pick_species):
     """Hatch any egg that has covered its distance. `pick_species(target_km)`
     supplies the species so the rarity logic can live in protocol.py."""
@@ -1326,11 +1797,14 @@ def check_hatches(pick_species):
                 continue
             tier = egg["target_km"]
             pid, cp = pick_species(tier)
-            uid = _fresh_uid({c["uid"] for c in p.CAUGHT}
+            uid = _hatch_uid({c["uid"] for c in p.CAUGHT}
                              | {e["uid"] for e in p.EGGS} | set(p.DELETED))
             p.CAUGHT.append({"uid": uid, "pokemon_id": pid, "cp": cp,
                              "caught_ms": int(time.time() * 1000)})
             p.EGGS.remove(egg)
+            # Inventory deltas are additive: without a deletion the client keeps the
+            # hatched egg in its list, still "in" the incubator that is now free.
+            p.DELETED[int(egg["uid"])] = int(time.time() * 1000)
             for i in p.INCUBATORS:
                 if i["id"] == egg["incubator"]:
                     i.update(egg=0, start_km=0.0, target_km=0.0)
@@ -1338,7 +1812,7 @@ def check_hatches(pick_species):
                         i["uses"] -= 1
             # A basic incubator on its last use breaks, as in the real game.
             p.INCUBATORS = [i for i in p.INCUBATORS if i.get("uses", -1) != 0]
-            xp = int(tier) * 100
+            xp = _cfg.get("eggs", "hatch_xp", cast=int)
             candy = 2 + int(tier)
             dust = int(tier) * 100
             rec = {"uid": uid, "pokemon_id": pid, "cp": cp, "km": tier,
@@ -1385,6 +1859,13 @@ def pokedex_caught(pokemon_id):
     p.save()
 
 
+def pokedex_is_new(pokemon_id):
+    """True until this species has been caught (or hatched) once."""
+    with _lock:
+        e = current().POKEDEX.get(int(pokemon_id))
+    return not e or e[1] <= 0
+
+
 def pokedex():
     with _lock:
         return sorted((pid, v[0], v[1]) for pid, v in current().POKEDEX.items())
@@ -1422,8 +1903,14 @@ def item_active(item_id):
 
 
 def xp_multiplier():
-    """A Lucky Egg doubles everything you earn while it burns."""
-    return 2 if item_active(301) else 1
+    """A Lucky Egg doubles everything you earn while it burns; an event XP bonus
+    (events.json xp_bonus) multiplies on top."""
+    try:
+        import events
+        bonus = events.xp_bonus()[0]
+    except Exception:
+        bonus = 1
+    return (2 if item_active(301) else 1) * bonus
 
 
 # The shiny pair are BAG items (2026-09-25): two Items the 2016 game never used,
@@ -1438,22 +1925,18 @@ SHINY_INCENSE_BAG_ITEM = 402
 SHINY_INCENSE_ITEM = 9401
 
 
+# The Shiny Charm is gone (2026-10-05). A save that still has one (in the bag, or
+# the older SHINY_CHARM flag) loses it on load and gets its price back.
+SHINY_CHARM_REFUND = 1000
+
+
 def has_shiny_charm():
-    """The charm in the bag -- or bought before it was a bag item (SHINY_CHARM)."""
-    p = current()
-    with _lock:
-        return bool(p.SHINY_CHARM) or p.BAG.get(SHINY_CHARM_ITEM, 0) > 0
+    """Always False: the Shiny Charm was removed."""
+    return False
 
 
 def grant_shiny_charm():
-    """(ok, message). Into the bag; one is all you need, so a second is refused
-    rather than silently taking the coins."""
-    if has_shiny_charm():
-        return False, "You already have the Shiny Charm."
-    if room_in_bag() < 1:
-        return False, "Your bag is full."
-    add_item(SHINY_CHARM_ITEM, 1)
-    return True, "The Shiny Charm is in your bag. It works while you carry it."
+    return False, "The Shiny Charm isn't sold any more."
 
 
 def grant_shiny_incense():
@@ -1521,8 +2004,10 @@ def load_lures():
     return True
 
 
-def add_fort_modifier(fort_id, item_id, minutes, by):
-    """Attach a Lure to a PokeStop. 1=SUCCESS 2=ALREADY_HAS_ONE 4=NO_ITEM."""
+def add_fort_modifier(fort_id, item_id, minutes, by, pos=None):
+    """Attach a Lure to a PokeStop. 1=SUCCESS 2=ALREADY_HAS_ONE 4=NO_ITEM.
+    pos = the stop's (lat, lng) when known: kept with the lure, so its Pokemon can be
+    placed even when the map request doesn't carry that stop (and after a restart)."""
     now = int(time.time() * 1000)
     with _lock:
         cur = FORT_MODIFIERS.get(fort_id)
@@ -1531,6 +2016,8 @@ def add_fort_modifier(fort_id, item_id, minutes, by):
             # Lure party: add this lure's time to what's already burning.
             cap = now + int(_cfg.get("boosts", "lure_max_minutes", cast=float) * 60000)
             cur["expires_ms"] = min(cap, int(cur["expires_ms"]) + int(minutes * 60000))
+            if pos and "lat" not in cur:
+                cur["lat"], cur["lng"] = float(pos[0]), float(pos[1])
             FORT_MODIFIERS[fort_id] = cur
             save_lures()
             return 1, dict(cur)
@@ -1539,6 +2026,8 @@ def add_fort_modifier(fort_id, item_id, minutes, by):
     if not take_item(int(item_id), 1):
         return 4, None
     mod = {"item": int(item_id), "expires_ms": now + int(minutes * 60000), "by": by}
+    if pos:
+        mod["lat"], mod["lng"] = float(pos[0]), float(pos[1])
     with _lock:
         FORT_MODIFIERS[fort_id] = mod
     save_lures()
@@ -1704,6 +2193,22 @@ def codename():
     return current().CODENAME or ""
 
 
+def owner_codename(owner):
+    """The in-game name of a loaded trainer (by login name), or "" if unknown --
+    so a defender shows the name its trainer goes by NOW, and old defenders saved
+    under the login handle get their real name back."""
+    with _lock:
+        p = _players.get(owner) if owner else None
+    return (getattr(p, "CODENAME", "") or "") if p is not None else ""
+
+
+def owner_level(owner):
+    """The trainer level of a loaded trainer (by login name), or 0 if unknown."""
+    with _lock:
+        p = _players.get(owner) if owner else None
+    return int(getattr(p, "LEVEL", 0) or 0) if p is not None else 0
+
+
 def set_codename(name):
     """The trainer's chosen in-game name (NAME_SELECTION step)."""
     p = current()
@@ -1788,6 +2293,9 @@ def is_raid_uid(fort_id, uid):
 # unclaimed gyms -- worked out from the fort id, so a gym looks the same every
 # time you pass it, and nothing is written to disk until you actually fight.
 NPC_CLEARED = {}                      # fort_id -> ms it was beaten
+# Defenders that came home while their owner was offline:
+# owner -> [[fort_id, pokemon_id, coins, owner, uid], ...], paid on their next request.
+RETURNS = {}
 _NPC_TRAINER = "Rival"
 
 
@@ -2126,7 +2634,8 @@ def add_prestige(fort_id, delta):
     defender sent home) so the winner can claim it with a fresh deploy."""
     ejected = []
     with _lock:
-        new = int(PRESTIGE.get(fort_id, 0)) + int(delta)
+        # 2016 gyms topped out at 52,000 prestige (level 10 starts at 50,000).
+        new = min(GYM_PRESTIGE_CAP, int(PRESTIGE.get(fort_id, 0)) + int(delta))
         if new <= 0:
             ejected = list(GYMS.get(fort_id, []))
             GYMS.pop(fort_id, None)
@@ -2150,9 +2659,18 @@ def add_prestige(fort_id, delta):
     return new, level, ejected
 
 
+def _is_mine(m, me):
+    return m.get("owner") in (None, me)
+
+
 def is_deployed(uid):
+    """Is THIS trainer's Pokemon `uid` defending a gym? Ids are only unique inside
+    one trainer's box (two trainers who catch the same shared spawn can hold the
+    same id), so someone else's defender must not lock up your copy."""
+    me = current().username
     with _lock:
-        return any(m["uid"] == uid for ms in GYMS.values() for m in ms)
+        return any(m["uid"] == uid and _is_mine(m, me)
+                   for ms in GYMS.values() for m in ms)
 
 
 def deployed_fort(uid):
@@ -2160,26 +2678,50 @@ def deployed_fort(uid):
     defenders by which Pokemon in the inventory carry a deployed_fort_id, and it
     greys the Shop's defender-bonus shield (never even sends the collect request)
     when that count is zero -- so this is what makes the shield collectable."""
+    member = deployed_member(uid)
+    return member[0] if member else None
+
+
+def deployed_member(uid):
+    """(fort_id, a copy of the gym member) for THIS trainer's Pokemon `uid` if it
+    is defending a gym, or None."""
+    me = current().username
     with _lock:
         for fid, ms in GYMS.items():
-            if any(m["uid"] == uid for m in ms):
-                return fid
+            for m in ms:
+                if m["uid"] == uid and _is_mine(m, me):
+                    return fid, dict(m)
     return None
 
 
 def deploy(fort_id, uid, trainer=None, team=None):
     p = current()
-    trainer = trainer or p.username
+    # The trainer's chosen in-game name -- p.username is the login handle (a
+    # website account's is "ws" + 8 hex digits), which isn't meant to be seen.
+    trainer = trainer or p.CODENAME or p.username
     team = team if team is not None else my_team()
+    level = stats()[0]
     c = get_caught(uid)
     if not c:
         return False, "unknown pokemon"
+    if not team:
+        return False, "no team"
+    # A gym still held by (virtual) rivals, or standing in for a raid boss, is not
+    # an empty slot: claiming it would have made the rivals vanish under you.
+    if RAID["on"]:
+        return False, "held by another team"
+    rivals = not GYMS.get(fort_id) and _npc_members(fort_id)
+    if rivals:
+        return False, "held by another team"
     with _lock:
+        # One gym at a time per Pokemon -- anywhere, not just this gym. (And never
+        # two defenders with the same id in one gym: the client keys them by id.)
+        if any(m["uid"] == uid and (_is_mine(m, p.username) or fid == fort_id)
+               for fid, ms in GYMS.items() for m in ms):
+            return False, "already deployed"
         members = GYMS.setdefault(fort_id, [])
         if members and members[0].get("team", team) != team:
             return False, "held by another team"
-        if any(m["uid"] == uid for m in members):
-            return False, "already deployed"
         # Slots scale with the gym's level (its prestige), not a flat cap -- a fresh
         # gym holds one, and it must be TRAINED up before more can join. Computed
         # inline because we already hold _lock here.
@@ -2187,6 +2729,8 @@ def deploy(fort_id, uid, trainer=None, team=None):
             return False, "gym full"
         members.append({"uid": uid, "pokemon_id": c["pokemon_id"], "cp": c["cp"],
                         "trainer": trainer, "team": team, "owner": p.username,
+                        "level": level,     # shown on the gym screen when offline
+                        "avatar": dict(p.AVATAR),   # their look, not the viewer's
                         "shiny": bool(c.get("shiny")),      # drawn shiny at the gym
                         # A defender walks in with the health it has, and keeps
                         # whatever an attacker knocks off it (see set_gym_hp).
@@ -2225,6 +2769,25 @@ def set_gym_hp(fort_id, uid, hp):
     return True
 
 
+def reset_gym_hp(fort_id, uid):
+    """A defender that was knocked out but still holds its slot (the gym kept enough
+    prestige) stands back up at FULL health for the next challenger, as in 2016. Storing
+    the 0 instead left it on 1 HP -- _defender_hp never reports 0 -- so the next fight
+    was over in one tap."""
+    with _lock:
+        for m in GYMS.get(fort_id, []):
+            if m["uid"] == uid:
+                if m.get("stamina") is None and "hurt_ms" not in m:
+                    return False
+                m["stamina"] = None
+                m.pop("hurt_ms", None)
+                break
+        else:
+            return False
+    save_gyms()
+    return True
+
+
 def gym_hp(fort_id, uid):
     """The defender's stored health, or None if it has never been hurt. This is the
     RAW stored value -- protocol._defender_hp() applies the heal-back."""
@@ -2236,21 +2799,29 @@ def gym_hp(fort_id, uid):
 
 
 def recall(fort_id, uid):
+    """Take YOUR defender back off a gym. Someone else's Pokemon is not yours to
+    recall (this used to remove any uid it was handed)."""
+    me = current().username
     with _lock:
         members = GYMS.get(fort_id, [])
-        n = len(members)
-        GYMS[fort_id] = [m for m in members if m["uid"] != uid]
-        changed = n != len(GYMS[fort_id])
-        if not GYMS[fort_id]:
+        keep = [m for m in members
+                if not (m["uid"] == uid and m.get("owner") in (None, me))]
+        changed = len(keep) != len(members)
+        if not changed:
+            return False
+        if keep:
+            GYMS[fort_id] = keep
+        else:
             GYMS.pop(fort_id, None)
     save_gyms()
-    return changed
+    return True
 
 
 def clear_gym(fort_id):
     """Every defender is knocked out -- the gym goes neutral."""
     with _lock:
         GYMS.pop(fort_id, None)
+        PRESTIGE.pop(fort_id, None)
     save_gyms()
 
 
@@ -2270,7 +2841,9 @@ def collect_gym_returns():
     coins = _defender_coins()
     faint = _cfg.get("pokemon", "faint_after_gym", cast=bool)
     returned = []
+    me = current()
     with _lock:
+        changed = False
         for fid in list(GYMS):
             keep = []
             for m in GYMS.get(fid, []):
@@ -2279,6 +2852,7 @@ def collect_gym_returns():
                     m["deployed_ms"] = now
                     keep.append(m)
                 elif now - dep >= cutoff:
+                    changed = True
                     returned.append((fid, m["pokemon_id"], coins,
                                      m.get("owner"), m["uid"]))
                 else:
@@ -2286,14 +2860,24 @@ def collect_gym_returns():
             if keep:
                 GYMS[fid] = keep
             else:
+                # Shifts are short (gyms.defender_minutes), so the gym keeps its
+                # prestige -- the training isn't lost every time it empties.
                 GYMS.pop(fid, None)
+        # Someone else's defender came home during THIS trainer's request. It is
+        # gone from the gym now, so its owner can't find it on their next check --
+        # hold the payout for them (saved with the gyms) instead of dropping it.
+        for r in returned:
+            if r[3] and r[3] != me.username:
+                RETURNS.setdefault(r[3], []).append(list(r))
+        returned = [r for r in returned if not r[3] or r[3] == me.username]
+        held = RETURNS.pop(me.username, [])
+        changed = changed or bool(held)
+        returned += [tuple(r) for r in held]
     mine = []
-    if returned:
+    if changed:
         save_gyms()
-        me = current()
+    if returned:
         for fid, pid, c, owner, uid in returned:
-            if owner and owner != me.username:
-                continue                    # someone else's defender; they get paid
             with _lock:
                 me.COINS += c
                 if faint:
@@ -2358,6 +2942,85 @@ def collect_defender_bonus():
     return 1, coins, dust, gyms
 
 
+def repair_duplicate_uids():
+    """Give every Pokemon an id no OTHER trainer's Pokemon has.
+
+    Until 2026-10-03 two trainers who caught the same shared spawn got the SAME id.
+    Gym battles cannot tell two Pokemon with one id apart: once one copy was
+    defending, the other trainer's copy counted as "the defender" and could not
+    fight it -- the next battle of the run answered "no Pokemon fit to fight" and
+    the game threw you out. Runs once at start-up, before any trainer is loaded.
+    The copy defending a gym keeps its id (else the earliest catch does); every
+    other copy gets a fresh one. Its CP is unchanged, but its IVs, moves and size
+    are re-rolled, as they come from the id. Returns how many were changed."""
+    if _players:
+        return 0                            # trainers already loaded: their saves are live
+    try:
+        names = [f for f in os.listdir(SAVES_DIR) if f.endswith(".json")]
+    except OSError:
+        return 0
+    saves, where = {}, {}
+    for f in names:
+        path = os.path.join(SAVES_DIR, f)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(d, dict) or not isinstance(d.get("caught"), list):
+            continue
+        saves[path] = d
+        for i, c in enumerate(d["caught"]):
+            if isinstance(c, dict) and c.get("uid"):
+                where.setdefault(int(c["uid"]), []).append((path, i))
+    defending = {(m.get("owner"), int(m["uid"])) for ms in GYMS.values() for m in ms}
+    every = set(where)
+    touched, fixed = set(), 0
+    for uid, spots in where.items():
+        if len({p for p, _ in spots}) < 2:
+            continue
+
+        def _rank(spot):
+            d = saves[spot[0]]
+            return (0 if (d.get("username"), uid) in defending else 1,
+                    int(d["caught"][spot[1]].get("caught_ms") or 0))
+        spots = sorted(spots, key=_rank)
+        seen = {spots[0][0]}
+        for path, i in spots[1:]:
+            if path in seen:
+                continue                    # the same trainer twice: left alone
+            seen.add(path)
+            d = saves[path]
+            new = _fresh_uid(every | {int(k) for k in (d.get("deleted") or {})})
+            every.add(new)
+            d["caught"][i]["uid"] = new
+            # Tell the client the old id is gone, or it keeps a ghost of it.
+            d.setdefault("deleted", {})[str(uid)] = int(time.time() * 1000)
+            for ms in GYMS.values():
+                for m in ms:
+                    if int(m["uid"]) == uid and m.get("owner") == d.get("username"):
+                        m["uid"] = new
+            touched.add(path)
+            fixed += 1
+    for path in touched:
+        try:
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(saves[path], fh, indent=1)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+    if fixed:
+        save_gyms()
+        print(f"[world] gave {fixed} Pokemon a new id (it was shared with another "
+              f"trainer's Pokemon)", flush=True)
+    return fixed
+
+
 load_gyms()
 load_raid()
 load_lures()
+try:
+    repair_duplicate_uids()
+except Exception as _e:                     # never stop the server over a repair
+    print(f"[world] duplicate-id repair skipped: {_e}", flush=True)

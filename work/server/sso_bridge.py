@@ -31,8 +31,12 @@ _CTX = ssl._create_unverified_context()          # loopback hop; our own cert
 UPSTREAM = 443                                   # set by serve()
 
 
+MAX_BODY = 64 * 1024          # a login form; nothing bigger belongs here
+
+
 class Bridge(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    timeout = 60              # a silent client doesn't keep its thread
 
     def log_message(self, fmt, *args):
         print(f"[bridge] {self.command} {self.path}", flush=True)
@@ -47,12 +51,26 @@ class Bridge(BaseHTTPRequestHandler):
             self.end_headers()
             return
         body = b""
-        n = self.headers.get("Content-Length")
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if n < 0 or n > MAX_BODY:
+            self.close_connection = True
+            self.send_response(413)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if n:
-            body = self.rfile.read(int(n))
+            body = self.rfile.read(n)
         c = http.client.HTTPSConnection("127.0.0.1", UPSTREAM, context=_CTX, timeout=30)
         headers = {k: v for k, v in self.headers.items()
-                   if k.lower() not in ("content-length", "accept-encoding")}
+                   if k.lower() not in ("content-length", "accept-encoding",
+                                        "x-ws-forwarded-for")}
+        # Tell the server who is really logging in (it believes this header
+        # only from loopback), so its sign-in throttling counts the phone and
+        # not this bridge.
+        headers["X-WS-Forwarded-For"] = self.client_address[0]
         # Keep the Host the client sent; server.py routes /sso by path, but the
         # PTC handler echoes this host back into the URLs it hands the client,
         # so rewriting it here would send the client somewhere it cannot reach.

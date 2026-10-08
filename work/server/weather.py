@@ -133,6 +133,8 @@ def current(lat, lng):
 
 
 def boosted_types(lat, lng):
+    if not _cfg.get("weather", "boosts", cast=bool):
+        return set()                        # looks only: nothing is boosted
     w = current(lat, lng)
     return set(w["boosted_types"]) if w else set()
 
@@ -155,6 +157,11 @@ def handle(method, path, query, headers, body, log, ip=None):
     out = {"known": bool(w)}
     if w:
         out.update(w)
+        if not _cfg.get("weather", "boosts", cast=bool):
+            out["boosted_types"], out["boosted_names"] = [], []
+        r3 = _cfg.get("weather", "rainfx")
+        if isinstance(r3, dict):
+            out["rainfx"] = r3
     elif _cfg.get("weather", "enabled", cast=bool) and _last_error[0]:
         out["error"] = _last_error[0]
     return 200, {"Content-Type": "application/json", "Cache-Control": "no-store"}, \

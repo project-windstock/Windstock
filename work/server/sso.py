@@ -1,9 +1,9 @@
 """
 Fake Pokemon Trainer Club (PTC) SSO — sso.pokemon.com
 
-Reproduces the CAS/OAuth flow the 0.29 client performs, but accepts ANY
-username/password. Whatever username is typed on the PTC login screen is
-carried through to the RPC layer and used as the in-game trainer name.
+Reproduces the CAS/OAuth flow the 0.29 client performs. The username typed on
+the PTC login screen is the in-game trainer name; its first login sets the
+password, and every later one has to match it (world.check_login).
 
 Client flow (reverse-engineered from global-metadata.dat strings):
   1. GET  /sso/login?service=<callback>           -> JSON { lt, execution }
@@ -12,8 +12,9 @@ Client flow (reverse-engineered from global-metadata.dat strings):
   3. POST /sso/oauth2.0/accessToken  (code=ST-..)  -> "access_token=..&expires=.."
   4. GET  /sso/oauth2.0/profile?access_token=..    -> JSON { "birthdate": "..." }
 
-The access_token embeds the username (base64) so the RPC server can recover it
-without shared state surviving restarts.
+The ticket and the access_token carry the username and are SIGNED by this
+server (auth.py), so the RPC layer can trust the name without shared state --
+and nobody can write themselves a token for somebody else's trainer.
 """
 import base64
 import html
@@ -161,17 +162,26 @@ def _unb64(s: str) -> str:
     return base64.urlsafe_b64decode(s + pad).decode()
 
 
-def make_token(username: str) -> str:
-    return f"PTC.{_b64(username)}.{os.urandom(6).hex()}"
+# Where a login may send its ticket. The client names the callback itself, so
+# without this a crafted link (?service=https://elsewhere/...) would make our
+# login page hand a fresh ticket to somebody else's site.
+_CALLBACK_PATHS = ("/sso/oauth2.0/callback", "/sso/oauth2.0/callbackAuthorize")
 
 
-def username_from_token(token: str) -> str:
+def _safe_service(service, headers):
     try:
-        if token.startswith("PTC."):
-            return _unb64(token.split(".")[1])
-    except Exception:
+        u = urllib.parse.urlsplit(service or "")
+        host = (u.hostname or "").lower()
+        ours = ((headers.get("Host") or "").split(":")[0].strip().lower()
+                if headers is not None else "")
+        if (u.scheme in ("http", "https") and u.path in _CALLBACK_PATHS
+                and not u.username and "\r" not in service and "\n" not in service
+                and (host == ours or host in ("pokemon.com", "nianticlabs.com")
+                     or host.endswith((".pokemon.com", ".nianticlabs.com")))):
+            return service
+    except ValueError:
         pass
-    return token or "Trainer"
+    return CALLBACK
 
 
 def _resp(status, body, ctype="text/plain", extra=None):
@@ -181,6 +191,27 @@ def _resp(status, body, ctype="text/plain", extra=None):
     if isinstance(body, str):
         body = body.encode("utf-8")
     return status, headers, body
+
+
+def _client(headers):
+    """Who is signing in, for the log: phone type (from the game's User-Agent),
+    launcher build, a short device id and the address. A player who signs in
+    but never reaches the map sends nothing else, so this is all we get."""
+    import auth
+    ua = (headers.get("User-Agent") or "")
+    low = ua.lower()
+    if "android" in low or "dalvik" in low:
+        kind = "android"
+        m = __import__("re").search(r"Android ([0-9.]+)(?:; ([^;)]+))?", ua)
+        if m:
+            kind += " " + m.group(1) + (" " + m.group(2).strip() if m.group(2) else "")
+    elif any(k in low for k in ("iphone", "ipad", "ios", "cfnetwork", "darwin")):
+        kind = "ios"
+    else:
+        kind = "?" + ((" ua=" + ua[:40]) if ua else "")
+    build = (headers.get("X-WS-Launcher") or "").strip()[:8] or "-"
+    dev = (headers.get("X-WS-Device") or "").strip()[:6] or "-"
+    return f"{kind}, launcher {build}, dev {dev}, ip {auth.client_ip() or '-'}"
 
 
 def handle(method, path, query, headers, body, log):
@@ -197,7 +228,7 @@ def handle(method, path, query, headers, body, log):
     # sends an Accept header that includes text/html, so content-negotiating there
     # served it HTML and broke login. This path never collides with that.
     if path in ("/sso/welcome", "/sso/login/page") and method == "GET":
-        service = qs.get("service", [CALLBACK])[0]
+        service = _safe_service(qs.get("service", [CALLBACK])[0], headers)
         log(f"[ptc] branded login page served (service={service})")
         return _resp(200, login_page_html(service), "text/html; charset=utf-8")
 
@@ -206,7 +237,7 @@ def handle(method, path, query, headers, body, log):
     # webview, breaks IF login is native (flip the setting back). Off by default =
     # the proven JSON lt/execution tokens the native client expects.
     if path == "/sso/login" and method == "GET":
-        service = qs.get("service", [CALLBACK])[0]
+        service = _safe_service(qs.get("service", [CALLBACK])[0], headers)
         if _custom_login_on():
             log(f"[ptc] custom HTML login served at /sso/login (webview test; "
                 f"service={service})")
@@ -222,47 +253,72 @@ def handle(method, path, query, headers, body, log):
 
     # 2) credential submit -> check the password, then issue a service ticket
     if path == "/sso/login" and method == "POST":
-        username = (form.get("username", [""])[0] or "Trainer").strip()
+        username = (form.get("username", [""])[0] or "").strip()
         password = form.get("password", [""])[0] or ""
-        service = qs.get("service", [CALLBACK])[0]
+        service = _safe_service(qs.get("service", [CALLBACK])[0], headers)
         from_web = bool(form.get("web"))
+        import rpc as _rpc
+        import online as _online
+        import auth as _auth
+        if getattr(_rpc._req_old, "value", False) or _online.recently_outdated(username, _auth.client_ip()):
+            # An old launcher (online.outdated), on this request or the game's last one:
+            # say so, no ticket.
+            log(f"[ptc] LOGIN REFUSED  username={username!r}  (launcher out of date)  [{_client(headers)}]")
+            return _resp(200, json.dumps({"errors": [_online.UPDATE_TEXT]}), "application/json")
         import world
         ok, why, real = world.check_login(username, password)
         if not ok:
-            log(f"[ptc] LOGIN REFUSED  username={username!r}  ({why})")
+            log(f"[ptc] LOGIN REFUSED  username={username!r}  ({why})  [{_client(headers)}]")
             if from_web:
                 # Re-render the branded page with the error, so a webview login
                 # shows it inline instead of a raw JSON body.
-                msg = ("That trainer name is already taken and the password "
-                       "doesn't match." if why == "wrong password"
-                       else "Unable to log in with the details provided.")
+                msg = world.login_message(why, taken=True)
                 return _resp(200, login_page_html(service, error=msg, prefill=username),
                              "text/html; charset=utf-8")
             # CAS reports a bad login as 200 with an "errors" body and NO ticket.
-            # The client then shows its own authentication-failed message.
-            return _resp(200, json.dumps(
-                {"errors": ["Unable to log in with the credentials provided."]}),
-                "application/json")
+            # The client then shows its own authentication-failed message; the
+            # text only matters where it says something to do (register first).
+            text = (world.login_message(why) if why in ("not registered", "site down", "email")
+                    else "Unable to log in with the credentials provided.")
+            return _resp(200, json.dumps({"errors": [text]}), "application/json")
         if why == "claimed":
             log(f"[ptc] NEW TRAINER {real!r} -- password set from this first login")
-        ticket = "ST-" + make_token(real)            # carries username
+        import auth
+        ticket = "ST-" + auth.issue("t", real, auth.TICKET_TTL)   # carries username
         location = f"{service}?ticket={urllib.parse.quote(ticket)}"
-        log(f"[ptc] LOGIN OK  username={real!r}  ->  ticket issued")
+        log(f"[ptc] LOGIN OK  username={real!r}  ->  ticket issued  [{_client(headers)}]")
         # 302 with the ticket in Location; also echo in body for robustness
         return _resp(302, f"ticket={ticket}", extra={"Location": location})
 
     # 3) exchange ticket (code) for an access token
     if path == "/sso/oauth2.0/accessToken":
+        import auth
         code = (form.get("code", qs.get("code", [""]))[0]) or ""
-        username = username_from_token(code[3:] if code.startswith("ST-") else code)
-        token = make_token(username)
+        username = auth.verify(code[3:] if code.startswith("ST-") else code, "t")
+        if not username:
+            # Only a ticket this server just issued (after a password check)
+            # can be traded for a token.
+            log("[ptc] accessToken REFUSED (ticket not ours, or expired)")
+            return _resp(400, "error=invalid_grant")
+        token = auth.issue("a", username, auth.ACCESS_TTL)
         log(f"[ptc] access_token issued for username={username!r}")
         return _resp(200, f"access_token={token}&expires=7200")
 
     # 4) profile -> only 'birthdate' is parsed by the client (age gate)
     if path == "/sso/oauth2.0/profile":
-        token = qs.get("access_token", [""])[0]
-        username = username_from_token(token)
+        import auth
+        # 0.29 sends the token in the query string; 0.35 POSTs it in the form
+        # body (or as a Bearer header).
+        token = (qs.get("access_token", [""])[0]
+                 or form.get("access_token", [""])[0])
+        if not token:
+            bearer = (headers.get("Authorization", "") or "").strip()
+            if bearer.lower().startswith("bearer "):
+                token = bearer[7:].strip()
+        username = auth.verify(token, "a")
+        if not username:
+            log("[ptc] profile REFUSED (no token of ours on the request)")
+            return _resp(401, json.dumps({"error": "invalid_token"}), "application/json")
         profile = {
             "id": _b64(username),
             "username": username,
@@ -276,7 +332,7 @@ def handle(method, path, query, headers, body, log):
 
     # OAuth authorize entrypoint -> bounce to the login page
     if path == "/sso/oauth2.0/authorize":
-        service = qs.get("redirect_uri", [CALLBACK])[0]
+        service = _safe_service(qs.get("redirect_uri", [CALLBACK])[0], headers)
         # RELATIVE redirect: keep the client on whatever host it reached us on
         # (bracky.playit.plus for a patched no-VPN client; sso.pokemon.com for a
         # DNS/VPN client). An absolute sso.pokemon.com URL would strand patched apps.

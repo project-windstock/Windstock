@@ -70,6 +70,14 @@ SHOP_ITEMS = [
 # popup names it instead of showing item_unknown_name. {stem: (Item, i18n key stem)}
 DISPLAY_ITEMS = {"shinycharm": (604, "item_x_miracle"),
                  "shinyincense": (402, "item_incense_spicy")}
+# Art the tweak hands to the game's own UI at runtime, found by sprite name. Listed in
+# ItemSpriteLookup.iapSprites under a sku nothing sells, only so Unity loads it with the
+# store table. xpbonus = the event XP bonus buff (tweak: xp_bonus_*, Store_Windstock_xpbonus);
+# candybonus / shinybonus / ghostbonus = the other event buffs (Halloween).
+BUFF_SPRITES = [("xpbonus", "xpbonus.png"),
+                # v146: one buff per event bonus (events.py buffs(): candy, shiny, spawn boost)
+                ("candybonus", "candybonus.png"), ("shinybonus", "shinybonus.png"),
+                ("ghostbonus", "ghostbonus.png")]
 SHOP_ICONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "shopicons")
 
 # Settings -> Help Center / Report an Issue open these (the game reads the addresses from
@@ -205,6 +213,123 @@ def patch_menu_blackout(sa):
         raise SystemExit(f"MapRadialMenu backdrop not found (got {done})")
 
 
+LOGIN_BLUE = (0x02 / 255.0, 0x5A / 255.0, 0xE5 / 255.0, 1.0)     # the website's button blue
+# The one login button left on the choice screen, and the title of the form behind it.
+LOGIN_TEXT = {"ptc_login_button": "Windstock", "ptc_login_title": "Windstock",
+              # the form shows this for ANY failed sign-in (the server's reason never reaches it)
+              "ptc_auth_failed": "Couldn't sign in. Use your game username (not your email) and "
+                                 "password -- not registered yet? Tap Register at windstock.org."}
+# The form's Register button opens PtcLoginState.signupUrls[<language>].RegistrationUrl.
+REGISTER_URL = "https://windstock.org/register.html"
+
+
+def _aligned_str(raw, off):
+    """(text, offset after it) for a serialized string: int32 length, bytes, pad to 4."""
+    n = struct.unpack_from("<i", raw, off)[0]
+    return raw[off + 4:off + 4 + n].decode("utf-8"), off + 4 + ((n + 3) & ~3)
+
+
+def _pack_str(s):
+    b = s.encode("utf-8")
+    return struct.pack("<i", len(b)) + b + b"\0" * (-len(b) & 3)
+
+
+def patch_register_url(sa):
+    """PtcLoginState (a MonoBehaviour, no type tree) ends in signupUrls: SignupUrls[] of
+    {SystemLanguage, RegistrationUrl, ForgotUsenameUrl, ForgotPasswordUrl}, one per language,
+    all on club.pokemon.com. Every language's RegistrationUrl becomes the Windstock register
+    page; the forgot links are left alone."""
+    hit = 0
+    for o in sa.objects.values():
+        if o.type.name != "MonoBehaviour":
+            continue
+        raw = o.get_raw_data()
+        if b"pokemon-trainer-club/sign-up" not in raw and REGISTER_URL.encode() not in raw:
+            continue
+        off = 32 + ((struct.unpack_from("<i", raw, 28)[0] + 3) & ~3)     # after m_Name
+        off += 24                                     # guiControllerPrefab, ptcAuthStatePrefab
+        start = off
+        count = struct.unpack_from("<i", raw, off)[0]
+        off += 4
+        rows = []
+        for _ in range(count):
+            lang = struct.unpack_from("<i", raw, off)[0]
+            reg, off = _aligned_str(raw, off + 4)
+            user, off = _aligned_str(raw, off)
+            pw, off = _aligned_str(raw, off)
+            rows.append((lang, reg, user, pw))
+        if not 1 <= count <= 32 or not 0 <= off - len(raw) < 4:      # last string's pad may be cut
+            raise SystemExit(f"PtcLoginState #{o.path_id}: unexpected layout")
+        if not all(r[1].startswith("http") for r in rows):
+            raise SystemExit(f"PtcLoginState #{o.path_id}: signupUrls don't parse")
+        body = struct.pack("<i", count) + b"".join(
+            struct.pack("<i", lang) + _pack_str(REGISTER_URL) + _pack_str(user) + _pack_str(pw)
+            for lang, _reg, user, pw in rows)
+        body = body[:len(body) - (off - len(raw))] if off > len(raw) else body   # same cut pad
+        o.set_raw_data(raw[:start] + body + raw[off:])
+        hit += 1
+    if hit != 1:
+        raise SystemExit(f"PtcLoginState signupUrls not found ({hit})")
+
+
+def patch_login_button(sa):
+    """The login choice screen's "Pokemon Trainer Club" button (LoginChoiceGui/.../PtcButton)
+    is the Windstock login, so it is drawn in Windstock blue instead of PTC orange. Its
+    Image is a white rounded box tinted by m_Color, the first thing after the (empty)
+    m_Material in a UI Graphic; MonoBehaviours here have no type tree, so the four floats
+    are written in place. The label is a text key -- see LOGIN_TEXT."""
+    target = None
+    for o in sa.objects.values():
+        if o.type.name == "GameObject" and o.read().m_Name == "PtcButton":
+            target = o.read_typetree()
+    if target is None:
+        raise SystemExit("PtcButton not in sharedassets0.assets")
+    hit = 0
+    for c in target["m_Component"]:
+        ptr = c["component"] if isinstance(c, dict) and "component" in c else c[1]
+        o = sa.objects[ptr["m_PathID"]]
+        if o.type.name != "MonoBehaviour":
+            continue
+        raw = o.get_raw_data()
+        body = 32 + ((struct.unpack_from("<i", raw, 28)[0] + 3) & ~3)      # after m_Name
+        # a Graphic: PPtr m_Material, Color, m_RaycastTarget, then the cull event's type name
+        if b"MaskableGraphic+CullStateChangedEvent" not in raw[body + 32:body + 96]:
+            continue
+        o.set_raw_data(raw[:body + 12] + struct.pack("<4f", *LOGIN_BLUE) + raw[body + 28:])
+        hit += 1
+    if hit != 1:
+        raise SystemExit(f"PtcButton's Image not found ({hit})")
+
+
+def patch_pokeball_shakes(sa):
+    """PokeballAnimator's Drop state picks 1Shake / 2Shakes / 3Shakes from the NumShakes int
+    (Pokeball.GetNumShakes: 4 on a catch, else from CatchPokemonOut.miss_percent). But the
+    stock 3Shakes -> End transition has HasExitTime OFF with only `NumShakes < 4`, so on a
+    break-out it fires the moment 3Shakes is entered: the ball rocks once and the Pokemon
+    pops out. Turn its exit time on (Niantic's own 0.944 is already stored there), so a
+    break-out can come after the 3rd wobble -- and a 3-wobble ball no longer means caught."""
+    for o in sa.objects.values():
+        if o.type.name != "AnimatorController":
+            continue
+        t = o.read_typetree()
+        if t["m_Name"] != "PokeballAnimator":
+            continue
+        tos = {int(k): v for k, v in t["m_TOS"]}
+        hit = 0
+        for sm in t["m_Controller"]["m_StateMachineArray"]:
+            for st in sm["data"]["m_StateConstantArray"]:
+                for tr in st["data"]["m_TransitionConstantArray"]:
+                    d = tr["data"]
+                    if tos.get(d["m_FullPathID"]) == "Base Layer.3Shakes -> Base Layer.End":
+                        d["m_HasExitTime"] = True
+                        hit += 1
+        if hit != 1:
+            raise SystemExit(f"PokeballAnimator 3Shakes -> End not found ({hit})")
+        o.save_typetree(t)
+        return o.path_id
+    raise SystemExit("PokeballAnimator not in sharedassets0.assets")
+
+
 def patch_sprites(data_dir):
     env = UnityPy.load(os.path.join(data_dir, "sharedassets0.assets"),
                        os.path.join(data_dir, "globalgamemanagers.assets"))
@@ -236,7 +361,7 @@ def patch_sprites(data_dir):
     # one texture: row = badge, column = level; the last row holds the store icons
     # (Unity textures are bottom-up)
     shop_row = len(BADGES)
-    tw, th = SIZE * max(len(LEVELS), len(SHOP_ITEMS)), SIZE * (len(BADGES) + 1)
+    tw, th = SIZE * max(len(LEVELS), len(SHOP_ITEMS) + len(BUFF_SPRITES)), SIZE * (len(BADGES) + 1)
     atlas = Image.new("RGBA", (tw, th))
     cells = {}
     for row, (bt, kind, *_rest) in enumerate(BADGES):
@@ -244,7 +369,7 @@ def patch_sprites(data_dir):
             medal = badge_art.render_medal(frame, kind)
             atlas.paste(medal, (col * SIZE, th - (row + 1) * SIZE))
             cells[(bt, col)] = (col * SIZE, row * SIZE)
-    for col, (stem, icon, *_rest) in enumerate(SHOP_ITEMS):
+    for col, (stem, icon, *_rest) in enumerate(SHOP_ITEMS + BUFF_SPRITES):
         im = Image.open(os.path.join(SHOP_ICONS, icon)).convert("RGBA").resize((SIZE, SIZE), Image.LANCZOS)
         atlas.paste(im, (col * SIZE, th - (shop_row + 1) * SIZE))
         cells[(stem, 0)] = (col * SIZE, shop_row * SIZE)
@@ -292,6 +417,10 @@ def patch_sprites(data_dir):
     for stem, *_rest in SHOP_ITEMS:
         x, y = cells[(stem, 0)]
         shop_sprites[stem] = make_sprite(store_template, f"Store_Windstock_{stem}", x, y)
+    buff_sprites = {}
+    for stem, _icon in BUFF_SPRITES:
+        x, y = cells[(stem, 0)]
+        buff_sprites[stem] = make_sprite(store_template, f"Store_Windstock_{stem}", x, y)
 
     # BadgeService: m_GameObject, m_Enabled, m_Script, m_Name, badgeAwardGuiPrefab,
     # defaultBadgeSprites[], badgeSprites[] -- rewrite the last array with ours added
@@ -317,14 +446,17 @@ def patch_sprites(data_dir):
                     for bt, ids in new_sets]
     service.set_raw_data(raw[:sets_at] + struct.pack("<i", len(blobs)) + b"".join(blobs) + tail)
 
-    patch_store_sprites(sa, gg, gg_fid, shop_sprites)
+    patch_store_sprites(sa, gg, gg_fid, shop_sprites, buff_sprites)
     patch_incense_material(sa)
     patch_menu_blackout(sa)
+    patch_login_button(sa)
+    patch_register_url(sa)
+    patch_pokeball_shakes(sa)
     _write(os.path.join(data_dir, "sharedassets0.assets"), sa.save())
     return service.path_id, tex_obj.path_id, new_sets
 
 
-def patch_store_sprites(sa, gg, gg_fid, shop_sprites):
+def patch_store_sprites(sa, gg, gg_fid, shop_sprites, buff_sprites=None):
     """ItemSpriteLookup (the in-game store's art table): m_GameObject, m_Enabled, m_Script,
     m_Name, sprites[] {Item, Sprite}, altSprites[] {Item, Sprite}, iapSprites[] {string sku,
     Sprite}, currencySprites[] ... -- append our SKUs to iapSprites."""
@@ -368,11 +500,12 @@ def patch_store_sprites(sa, gg, gg_fid, shop_sprites):
         off = end
     tail = raw[off:]
     ours = {}
-    for stem, pid in shop_sprites.items():
-        for sku in (f"{stem}.1", stem):
-            b = sku.encode()
-            blob = struct.pack("<i", len(b)) + b + b"\0" * ((4 - len(b) % 4) % 4) + struct.pack("<iq", 0, pid)
-            ours[sku] = blob
+    skus = [(sku, pid) for stem, pid in shop_sprites.items() for sku in (f"{stem}.1", stem)]
+    skus += [(stem, pid) for stem, pid in (buff_sprites or {}).items()]
+    for sku, pid in skus:
+        b = sku.encode()
+        blob = struct.pack("<i", len(b)) + b + b"\0" * ((4 - len(b) % 4) % 4) + struct.pack("<iq", 0, pid)
+        ours[sku] = blob
     blobs = [blob for sku, blob in entries if sku not in ours] + list(ours.values())
     lookup.set_raw_data(raw[:iap_at] + struct.pack("<i", len(blobs)) + b"".join(blobs) + tail)
 
@@ -465,6 +598,7 @@ def patch_strings(data_dir, links=None):
     """Returns (rows added, files written). links: extra "general" rows (LINKS_IOS /
     LINKS_ANDROID) -- Settings' Help Center / Report an Issue addresses and prompts."""
     badges = dict(links or {})
+    badges.update(LOGIN_TEXT)
     for bt, _kind, title, desc, fmt in BADGES:
         badges.update({f"{bt}": desc, f"{bt}_title": title, f"{bt}_value_format": fmt})
     shop = {}
@@ -525,7 +659,7 @@ def verify(data_dir):
     assert ok == 3 * len(BADGES), f"only {ok} new sprites render"
     shop_ok = sum(1 for o in sf.objects.values() if o.type.name == "Sprite"
                   and o.read().m_Name.startswith("Store_Windstock_") and o.read().image.getextrema()[3][1] > 0)
-    assert shop_ok == len(SHOP_ITEMS), f"only {shop_ok} store sprites render"
+    assert shop_ok == len(SHOP_ITEMS) + len(BUFF_SPRITES), f"only {shop_ok} store sprites render"
     ok += shop_ok
     want = {"general": [f"{bt}_title" for bt, *_ in BADGES],
             "items": [f"{stem}.1_title" for stem, *_ in SHOP_ITEMS]
@@ -540,7 +674,14 @@ def verify(data_dir):
             keys = {l.split("\t", 1)[0].strip('"') for l in table.split("\n")}
             for k in want[o.read().m_Name]:
                 assert k in keys, f"{k} missing from {o.read().m_Name}"
-    print(f"verified: {ok} sprites render, strings decrypt")
+            if o.read().m_Name == "general":
+                for k, text in LOGIN_TEXT.items():
+                    rows = [l for l in table.split("\n") if l.split("\t", 1)[0].strip('"') == k]
+                    assert len(rows) == 1 and rows[0].split("\t")[1].strip('"') == text, f"{k} is not {text!r}"
+    assert any(
+        REGISTER_URL.encode() in o.get_raw_data() for o in sf.objects.values()
+        if o.type.name == "MonoBehaviour"), "Register button still opens club.pokemon.com"
+    print(f"verified: {ok} sprites render, strings decrypt, Register opens {REGISTER_URL}")
 
 
 # ------------------------------------------------------------------ Android
@@ -625,12 +766,44 @@ def patch_apk(src, out, key=SIGN_KEY, crt=SIGN_CRT):
         shutil.rmtree(work)
 
 
+def patch_shakes_dir(data_dir):
+    """Only the Poke Ball wobble fix (patch_pokeball_shakes), for a Data dir that already
+    carries the other patches -- the Android game build runs it on the apktool-decoded
+    RELEASE APK (assets/bin/Data), whose sharedassets0 is in 1 MiB .splitN pieces.
+    Idempotent: a fixed animator is simply re-saved."""
+    whole = os.path.join(data_dir, "sharedassets0.assets")
+    pieces = sorted((int(m.group(1)), n) for n in os.listdir(data_dir)
+                    for m in [re.fullmatch(r"sharedassets0\.assets\.split(\d+)", n)] if m)
+    if pieces:
+        with open(whole, "wb") as fh:
+            for _, n in pieces:
+                fh.write(open(os.path.join(data_dir, n), "rb").read())
+    env = UnityPy.load(whole)
+    sa = _file(env, "sharedassets0.assets")
+    pid = patch_pokeball_shakes(sa)
+    data = sa.save()
+    del env, sa
+    if pieces:
+        os.remove(whole)
+        for _, n in pieces:
+            os.remove(os.path.join(data_dir, n))
+        for k in range(0, len(data), SPLIT):
+            _write(os.path.join(data_dir, f"sharedassets0.assets.split{k // SPLIT}"), data[k:k + SPLIT])
+    else:
+        _write(whole, data)
+    print(f"sharedassets0: PokeballAnimator #{pid} 3Shakes -> End waits for its exit time")
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("target", help="pokemongo.app directory, an .ipa, or an Android .apk")
     ap.add_argument("-o", "--out", help="output .ipa / .apk (IPA and APK input)")
+    ap.add_argument("--shakes-only", action="store_true",
+                    help="target is a Data dir: apply only the Poke Ball wobble fix")
     a = ap.parse_args(argv)
-    if a.target.endswith(".apk"):
+    if a.shakes_only:
+        patch_shakes_dir(a.target)
+    elif a.target.endswith(".apk"):
         if not a.out:
             ap.error("an .apk needs -o <out.apk>")
         patch_apk(a.target, os.path.abspath(a.out))
