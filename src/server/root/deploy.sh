@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install / refresh the Windstock root module on a rooted phone (APatch or Magisk):
 # the CA in both system trust stores, and the Niantic/PTC hostnames pinned to this
-# PC. See README (in this folder) for why, and ../APATCH-ROOT.md for the full run.
+# PC. See windstock-ca/README.md for why, and ../APATCH-ROOT.md for the full run.
 #
 #   ./deploy.sh                 # use the PC's current LAN IP
 #   IP=192.168.1.50 ./deploy.sh # pin a specific address
@@ -87,3 +87,7 @@ echo
 echo "Reboot so the mounts exist before Zygote starts, then verify:"
 echo "  adb reboot"
 echo "  ./verify.sh"
+echo
+echo "Before playing, prepare-phone.sh keeps the game from hanging on a phone"
+echo "that is short of RAM:"
+echo "  ./prepare-phone.sh"

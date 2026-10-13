@@ -64,6 +64,12 @@ server/*.spec
 # ...except our own Windstock artwork, which the server window needs.
 !server/brand/*.png
 
+# Double-click launchers (Windows + Linux). They start the server from the copy
+# of the tree they sit in, so they are a per-machine convenience: publishing one
+# would point somebody else's double-click at their own checkout.
+/Start-Windstock.cmd
+/Start-Windstock.sh
+
 # Local tooling config (not part of the project)
 .claude/
 .freebuff/

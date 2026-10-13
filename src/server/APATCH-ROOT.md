@@ -53,6 +53,10 @@ adb reboot
 `com.nianticlabs.pokemongo`) and list the pins. Anything else means the module
 did not take effect.
 
+Before a session, `root/prepare-phone.sh` reclaims the phone's RAM so the game
+does not get built into a memory-starved device — see *When the game freezes
+instead of running* below.
+
 Then start the server as usual:
 
 ```bash
@@ -92,7 +96,16 @@ Measured symptoms: Unity's main thread parked in
 throttling, and one idle `ESTABLISHED` socket to the server whose last request
 had already been answered. That is a hang, not slowness.
 
-What cleared it:
+What cleared it — now `root/prepare-phone.sh`, which runs the first two steps
+below and reports the free RAM on either side of them:
+
+```sh
+cd root
+MSYS_NO_PATHCONV=1 ./prepare-phone.sh            # reclaim RAM, drop a stale guest
+MSYS_NO_PATHCONV=1 ./prepare-phone.sh --start    # ...and reopen the game cold
+```
+
+Underneath it is:
 
 ```sh
 adb shell am kill-all                    # reclaim RAM from cached background apps
