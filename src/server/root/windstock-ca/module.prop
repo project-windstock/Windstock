@@ -1,0 +1,6 @@
+id=windstock-ca
+name=Windstock CA + host redirect
+version=1.1
+versionCode=2
+author=bracky-dev
+description=Adds the Windstock private root CA to the system trust stores and pins the Niantic/PTC hostnames to the Windstock PC. Delete this module and reboot to undo.

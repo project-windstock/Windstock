@@ -1,0 +1,8 @@
+# Shell scripts here are executed on Android (`sh script.sh`, and the root
+# module's script is run by APatch/Magisk at boot), where a CRLF from a Windows
+# checkout is a syntax error. Keep them LF in the repository whatever the
+# checkout platform is.
+*.sh text eol=lf
+
+# The bundled phone app and anything under assets are binary.
+*.apk binary

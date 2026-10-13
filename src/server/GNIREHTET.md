@@ -121,6 +121,11 @@ The launcher copies the CA to the phone. Install it once:
 
 Then start **Pokémon GO** and log in with any username and password.
 
+> **Rooted phone (APatch or Magisk)?** Skip that user certificate, and DNS with
+> it: `APATCH-ROOT.md` puts the CA into both system trust stores and pins the
+> Niantic hosts, which is what makes *unable to authenticate with nothing in the
+> server log* stop happening. Verified on a Pixel 8 / Android 16.
+
 ---
 
 ## Keep one network ON (do NOT use Airplane mode)
