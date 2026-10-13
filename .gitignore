@@ -11,6 +11,14 @@
 /work/*
 !/work/server/
 !/work/tools/
+!/PoGoAvatarParser/
+# PoGoAvatarParser is kept whole, including its output (textures/, avatars/,
+# objs/, sheets/, random/, variants/, catalog.json). That is a deliberate
+# choice by the repo owner -- the extracted tiles and built models are what
+# make the package usable straight after a clone, and this checkout is kept
+# private and never published. PoGoAvatarParser/.gitignore negates the global
+# *.png / *.glb / *.json rules above so those files are actually not dropped;
+# delete that file to keep only the source.
 
 # ============================================================================
 #  DO NOT COMMIT — Niantic copyrighted material (APK, decompiled assets, data)
@@ -130,3 +138,22 @@ work/server/research_art/
 
 #  Shop and item icons lifted from the client, same reason as research_art/.
 work/server/shopicons/
+# ============================================================================
+#  Chucny's Translator (project2/) - the app and the build tooling that turns it
+#  into an APK. The whitelist at the top of this file predates it, so the tree is
+#  re-included here - SOURCE ONLY, for the same reason the rules below exist:
+#  no APKs (the Niantic client, or anything carrying it, stays out), no staged
+#  32-bit runtime, no payload containers, no Gradle output. Build those locally:
+#  see project2/README-OBFUSCATION.md.
+# ============================================================================
+!/project2/
+/project2/build/launcher/
+/project2/build/payloads/
+/project2/build/bundled-assets/
+/project2/build/__pycache__/
+/project2/launcher/app/build/
+/project2/launcher/.gradle/
+/project2/launcher/local.properties
+#  The octicon sources the GitHub button is rasterised from are PNGs, which the
+#  blanket *.png rule above would drop.
+!/project2/build/icons/

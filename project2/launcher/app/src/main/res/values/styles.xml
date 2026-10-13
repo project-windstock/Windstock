@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    One theme per scheme in LauncherSettings.Skin - Light and Dark, and nothing else - in the shape
+    the Pixel's own Settings app is built in: Material 3 (Material You), no action bar, edge-to-edge.
+
+    Why there is no action bar: a Material 3 large top app bar is not the platform's action bar. It is
+    a surface-coloured block with the title at its left and no accent colour anywhere, which is what
+    Ui.topAppBar draws in code. The platform's action bar cannot be made to look like that (its height,
+    its scroll behaviour and its accent-coloured background are all theme-level), so every scheme is a
+    NoActionBar theme and the bar is part of the layout.
+
+    Why the bars are transparent: edge-to-edge, like a Pixel. The window fills the screen behind the
+    status and navigation bars, and each screen pads itself by the system insets (see Ui.root), so the
+    top app bar's surface runs all the way up behind the status bar. The colours are the Material 3
+    baseline palette from colors.xml, fixed for every device - nothing is read from the wallpaper.
+
+    Why there are two XML themes for one app: the theme of an activity is fixed before onCreate runs,
+    so Light and Dark have to exist as whole themes rather than as one theme a screen recolours; and
+    the dialogs and menus a screen opens come from that theme too. Skin below picks between them by
+    the phone's day/night setting - see values-night/styles.xml - which is the theme the manifest
+    gives the application, so the very first frame is right before any code has read the setting.
+-->
+<resources>
+    <!-- The common part of the Material 3 look: no action bar, transparent bars, a text field
+         cursor and a dialog that follow the accent. -->
+    <style name="SkinBase" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- Material You: a Pixel is never in a letterbox. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/m3_surface_light</item>
+        <item name="android:colorPrimary">@color/m3_primary_light</item>
+        <item name="android:colorPrimaryDark">@color/m3_surface_dark</item>
+        <item name="android:colorAccent">@color/m3_primary_light</item>
+        <item name="android:colorControlActivated">@color/m3_primary_light</item>
+        <item name="android:colorControlNormal">@color/m3_on_surface_variant_light</item>
+        <item name="android:textColorPrimary">@color/m3_on_surface_light</item>
+        <item name="android:textColorSecondary">@color/m3_on_surface_variant_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <!-- Material 3 removed the platform's all-caps button label. -->
+        <item name="android:buttonStyle">@android:style/Widget.Material.Button.Borderless</item>
+        <item name="android:colorEdgeEffect">@color/m3_primary_light</item>
+    </style>
+
+    <style name="SkinBaseDark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/m3_surface_dark</item>
+        <item name="android:colorPrimary">@color/m3_primary_dark</item>
+        <item name="android:colorPrimaryDark">@color/m3_surface_dark</item>
+        <item name="android:colorAccent">@color/m3_primary_dark</item>
+        <item name="android:colorControlActivated">@color/m3_primary_dark</item>
+        <item name="android:colorControlNormal">@color/m3_on_surface_variant_dark</item>
+        <item name="android:textColorPrimary">@color/m3_on_surface_dark</item>
+        <item name="android:textColorSecondary">@color/m3_on_surface_variant_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:buttonStyle">@android:style/Widget.Material.Button.Borderless</item>
+        <item name="android:colorEdgeEffect">@color/m3_primary_dark</item>
+    </style>
+
+    <!-- Light and Dark: the only two schemes. The colours here are the baseline ones from
+         colors.xml. -->
+    <style name="SkinLight" parent="SkinBase" />
+    <style name="SkinDark" parent="SkinBaseDark" />
+
+    <!-- The application's theme (see AndroidManifest.xml): the scheme the phone is set to, from the
+         very first frame and from before any code has run. Light here, Dark in
+         values-night/styles.xml; every screen then applies the chosen scheme in onCreate, which is
+         what makes an explicit Light/Dark choice win over the system's. -->
+    <style name="Skin" parent="SkinLight" />
+
+    <!-- The three text roles a code-built layout uses, so a list row, a section label and a body
+         line agree wherever the platform inflates one of them (a dialog, a menu). -->
+    <style name="M3Title">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">?android:attr/textColorPrimary</item>
+    </style>
+
+    <style name="M3Supporting">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+        <item name="android:lineSpacingMultiplier">1.2</item>
+    </style>
+
+    <style name="M3SectionLabel">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">?android:attr/colorAccent</item>
+    </style>
+</resources>

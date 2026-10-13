@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Common needs of plugin apps. Runtime (dangerous) permissions are declared here and
+         requested by GuestPermissions on the way into a launch, because the guest shares the
+         launcher's uid and cannot hold a permission of its own. Location is what a map or a
+         GPS game needs; add more to GuestPermissions.PROXIED as guests require them. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- android:largeHeap is for the :guest process, and it is the same Application for both
+         processes (the flag is per application, not per process, so the launcher's own screens get
+         the larger cap too - they use kilobytes of it, which is what makes this acceptable). A
+         translated client runs its own Java inside :guest: Unity's Java player, the plugin's
+         libraries, its caches. The default heap is a cap, not an allocation, and a guest that hits
+         it dies of OutOfMemoryError in a thread nobody chose - the failure mode this whole layer
+         exists to make rarer. -->
+    <!-- The Material 3 theme (see styles.xml). @style/Skin is the app's theme before any code runs:
+         it resolves to the light or the dark scheme by the phone's own day/night setting (values
+         vs. values-night), which is the same default LauncherSettings.skin falls back to. Every
+         screen then re-applies the chosen scheme in onCreate, so Light/Dark in the settings screen
+         wins over the system's - and because the dialogs and menus a screen opens come from the
+         window's theme, they follow the same choice. -->
+    <application
+        android:name=".ZbApplication"
+        android:allowBackup="false"
+        android:largeHeap="true"
+        android:label="@string/app_name"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:theme="@style/Skin">
+
+        <activity
+            android:name=".LibraryActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The Add apps section: import an APK, or install the app this build carries. Not
+             exported: it is a section of this app's own navigation bar and nothing else. -->
+        <activity
+            android:name=".ImportActivity"
+            android:exported="false"
+            android:label="@string/nav_add_apps" />
+
+        <!-- The launcher's own settings: its look, the defaults a new import gets, and the reports
+             and device facts a failure on another phone has to be described with. Not exported:
+             it is a section of the navigation bar and by nothing else. -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/action_settings" />
+
+        <!-- Target of pinned shortcuts: loads the plugin in :guest and starts its launcher activity. -->
+        <!-- Runs in the launcher's own process: it ends the :guest process so another plugin can
+             start in a fresh one. -->
+        <activity
+            android:name=".PluginSwitchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="com.chucny.translator.bridge.switch"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
+            android:name=".GuestLaunchActivity"
+            android:exported="true"
+            android:process=":guest"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- Where a failed launch is explained. It runs in the launcher's process and has a real
+             window: the :guest entry point above is NoDisplay, and the framework kills a NoDisplay
+             activity that has not finished by the end of onResume, so that activity cannot show the
+             reason itself. A plugin whose own activity cannot be created shows it in its stub
+             instead (see Stubs), which is the other half of "the window closes at once". -->
+        <activity
+            android:name=".LaunchFailureActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Skin" />
+
+        <!-- Watches the :guest process and reopens the game when it dies with a window on screen.
+             It has to live in the process that survives that death, which is this one - a thread
+             inside :guest would go away with the thing it is watching - and it is a started service
+             rather than a thread of the library screen because a process with no components is one
+             the system may reclaim, however cheap its thread is. Not exported, never bound, no
+             foreground notification: it reads a file lock every 500 ms and, after a crash, starts at
+             most three screens. -->
+        <service
+            android:name=".GuestSupervisor"
+            android:exported="false"
+            android:stopWithTask="false" />
+
+        <!-- Stub pool. GuestInstrumentation replaces each with the plugin activity named in the intent. -->
+        <activity
+            android:name=".Stubs$Standard"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|density|screenSize|smallestScreenSize|layoutDirection|colorMode"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="standard"
+            android:process=":guest"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity
+            android:name=".Stubs$Landscape"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|density|screenSize|smallestScreenSize|layoutDirection|colorMode"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="standard"
+            android:process=":guest"
+            android:screenOrientation="sensorLandscape"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity
+            android:name=".Stubs$Portrait"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|density|screenSize|smallestScreenSize|layoutDirection|colorMode"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="standard"
+            android:process=":guest"
+            android:screenOrientation="sensorPortrait"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity
+            android:name=".Stubs$SingleTop"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|density|screenSize|smallestScreenSize|layoutDirection|colorMode"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleTop"
+            android:process=":guest"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity
+            android:name=".Stubs$SingleTask"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|density|screenSize|smallestScreenSize|layoutDirection|colorMode"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleTask"
+            android:process=":guest"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity
+            android:name=".Stubs$SingleInstance"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|density|screenSize|smallestScreenSize|layoutDirection|colorMode"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleInstance"
+            android:process=":guest"
+            android:taskAffinity="com.chucny.translator.bridge.guest"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!-- AndroidIDE injects the Kotlin-based LogWire logger into debug builds. This app has no
+             Kotlin stdlib, so its init provider crashes the main process. Drop it. -->
+        <provider
+            android:name="io.github.mohammedbaqernull.logger.logwire.LogWireInitializer"
+            tools:node="remove" />
+    </application>
+</manifest>

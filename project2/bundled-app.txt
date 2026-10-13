@@ -1,0 +1,17 @@
+# The app this launcher build bundles, read at build time by build/pack_payloads.py and at run time
+# out of the encrypted payload it writes (see SeedPlugin). Its APK has to sit next to this file's
+# staging directory as build/bundled-assets/app/base.apk and is not in version control: stage it with
+# emulated/stage-bundled-apk.sh (or copy it there by hand). Deleting this file turns the build back
+# into the stock launcher, which imports whatever APK the user picks.
+#
+# This file is deliberately NOT an asset: shipping it would put the client's name on the APK's asset
+# list. pack_payloads.py copies its text into the payload's metadata block instead.
+#
+# package       the bundled client's real package: the import key, the store directory name and
+#               the name the guest's own code asks for. It must stay the client's.
+# label         what the library, the long-press menu and the pinned shortcut call the app.
+# displayPackage what the library shows as its package. Purely a label: the internal key above is
+#               unchanged, so the guest keeps seeing the identity it expects.
+package=com.nianticlabs.pokemongo.classic
+label=Pokemon GO
+displayPackage=com.chucny.translator.bridge

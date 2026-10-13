@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The Material 3 (Material You) baseline palette, in XML: Google's own colours, which are what the
+    themes fall back to before any code runs and what the screens use at runtime.
+
+    <p>These are fixed rather than taken from the phone. The app runs on phones of every make, so it
+    is drawn in the M3 design system's own palette everywhere instead of taking the colours a
+    particular device derives from its wallpaper; light and dark are the same design read at two
+    levels of light. Nothing here is per-device, and no wallpaper is ever read.
+
+    See Palette.java for the runtime mapping, and styles.xml for the themes themselves.
+-->
+<resources>
+    <!-- Light scheme. -->
+    <color name="m3_primary_light">#FF6750A4</color>
+    <color name="m3_on_primary_light">#FFFFFFFF</color>
+    <color name="m3_primary_container_light">#FFEADDFF</color>
+    <color name="m3_on_primary_container_light">#FF21005D</color>
+    <color name="m3_surface_light">#FFFFFBFE</color>
+    <color name="m3_surface_container_light">#FFF7F2FA</color>
+    <color name="m3_surface_container_high_light">#FFECE6F0</color>
+    <color name="m3_on_surface_light">#FF1C1B1F</color>
+    <color name="m3_on_surface_variant_light">#FF49454F</color>
+    <color name="m3_outline_light">#FF79747E</color>
+    <color name="m3_outline_variant_light">#FFCAC4D0</color>
+    <color name="m3_error_light">#FFB3261E</color>
+
+    <!-- Dark scheme. -->
+    <color name="m3_primary_dark">#FFD0BCFF</color>
+    <color name="m3_on_primary_dark">#FF381E72</color>
+    <color name="m3_primary_container_dark">#FF4F378B</color>
+    <color name="m3_on_primary_container_dark">#FFEADDFF</color>
+    <color name="m3_surface_dark">#FF1C1B1F</color>
+    <color name="m3_surface_container_dark">#FF211F26</color>
+    <color name="m3_surface_container_high_dark">#FF2B2930</color>
+    <color name="m3_on_surface_dark">#FFE6E1E5</color>
+    <color name="m3_on_surface_variant_dark">#FFCAC4D0</color>
+    <color name="m3_outline_dark">#FF938F99</color>
+    <color name="m3_outline_variant_dark">#FF49454F</color>
+    <color name="m3_error_dark">#FFF2B8B5</color>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The application theme when the phone itself is in dark mode, so the first frame - and anything the
+    framework inflates before a screen has read the stored setting - is already dark. Everything else
+    lives in values/styles.xml; this file exists only to pick the other scheme for @style/Skin.
+
+    A screen still applies the Light/Dark choice from the settings screen in onCreate, so an explicit
+    choice wins over the system's. See styles.xml and LauncherSettings.Skin.
+-->
+<resources>
+    <style name="Skin" parent="SkinDark" />
+</resources>

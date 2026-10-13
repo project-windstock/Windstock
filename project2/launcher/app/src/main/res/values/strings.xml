@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The name of this app: the launcher's own label, its action bar, and the title of every
+         report it copies to the clipboard. The package name (com.chucny.translator.bridge) and the
+         Java namespace underneath it are deliberately not derived from this: the package is the
+         installed identity an upgrade has to keep, and the namespace is half of the native symbol
+         names libzbridge.so exports. This is the name a person sees. -->
+    <string name="app_name">Chucny\'s Translator</string>
+
+    <!-- The footer of the library screen: who made this build, and where to find them. -->
+    <string name="made_by">Made by Chucny</string>
+    <string name="github_button">Open github.com/Chucny</string>
+    <string name="github_no_browser">No browser installed on this device. The address is %1$s</string>
+
+    <!-- Shows the reason a launch left no window behind: a stub that nothing replaced, or a failure
+         screen. Both exist because a window that closes at once explains nothing by itself. -->
+    <string name="could_not_open">%1$s could not open the app</string>
+
+    <!-- Clipboard labels for the two reports the library and the settings screen hand over. -->
+    <string name="error_report_label">%1$s error</string>
+    <string name="run_report_label">%1$s run report</string>
+
+    <!-- The three sections of the app, as the navigation bar at the bottom of every screen names
+         them. "Apps" is the library: the list of imported apps, each one an app you can launch. -->
+    <string name="nav_apps">Apps</string>
+    <string name="nav_add_apps">Add apps</string>
+
+    <!-- The Add apps section: how an APK gets into the library. -->
+    <string name="imports_title">Add apps</string>
+    <string name="imports_pick_note">Pick an APK file from this device. It is copied into the app\'s own storage and run by the bridge - nothing is installed system-wide, and the file you picked is left where it is.</string>
+    <string name="imports_bundled_note">Install the app this build carries, without a file picker: this is how a fresh install gets an app in it.</string>
+    <string name="imports_already_installed">This build\'s app is already in the list</string>
+    <string name="imports_note">A translated (32-bit) app runs through the bridge in its own process. Once an app is in the list, tap it in Apps to launch it, or long-press it for its own switches - hide ads, memory faults, GL diagnostics - and to remove it.</string>
+
+    <!-- Library screen. -->
+    <string name="library_empty">No apps yet. Open Add apps to import an APK or install the app this build carries. Tap an app in the list to launch it; long-press it for its own switches.</string>
+    <string name="library_install_bundled">Install the bundled app</string>
+    <string name="library_import">Import APK</string>
+    <string name="library_importing">Importing…</string>
+    <string name="library_installing_bundled">Installing the bundled app…</string>
+    <string name="library_no_bundled">This build has no bundled app</string>
+    <string name="library_no_pin">The home screen does not support pinned shortcuts</string>
+    <string name="library_delete_message">Delete %1$s and its data?</string>
+    <string name="library_delete">Delete</string>
+    <string name="library_cancel">Cancel</string>
+
+    <!-- An app's own switches, on its long-press menu. -->
+    <string name="app_launch">Launch</string>
+    <string name="app_last_report">Last run report</string>
+    <string name="app_pin">Pin shortcut</string>
+    <string name="app_show_ads">Show ads</string>
+    <string name="app_hide_ads">Hide ads</string>
+    <string name="app_faults_precise">Memory faults: precise (slower)</string>
+    <string name="app_faults_fast">Memory faults: fast (imprecise)</string>
+    <string name="app_gl_on">GL diagnostics: on (very slow)</string>
+    <string name="app_gl_off">GL diagnostics: off</string>
+    <string name="app_restart_note">Restart the app to apply.</string>
+    <string name="app_faults_note">Precise faults stop at the exact faulting instruction with the registers committed, at roughly 2x the cost on 32-bit code. Fast mode reports the end of the translated block instead and runs quicker - most apps do not notice, but a few report a crash at the wrong place.</string>
+
+    <!-- Settings screen. -->
+    <string name="action_settings">Settings</string>
+    <string name="settings_look">Theme</string>
+    <string name="settings_look_note">The app is designed in Material 3, with one fixed palette - Google\'s own - so it looks the same on every phone. Pick the scheme you want to read it in; the icons, rows and switches are identical either way.</string>
+
+    <string name="settings_performance">Performance</string>
+    <string name="settings_performance_note">How a translated (32-bit) app is run. These are the defaults a new import starts with; any app can be changed afterwards by long-pressing it in the library.</string>
+    <string name="settings_precise_faults">Precise memory faults</string>
+    <string name="settings_precise_faults_note">On: a memory fault stops at the exact instruction with the guest registers committed, and the crash report says where it really happened. It costs roughly 2x on 32-bit code. Turn it off to make translated apps faster - the fault is then reported at the end of the translated block.</string>
+    <string name="settings_gl_diagnostics">Full GL diagnostics</string>
+    <string name="settings_gl_diagnostics_note">Whole-framebuffer readbacks, per-draw pixel diffs and ASCII frame maps in the run report. Debugging only, and very slow. Leave it off unless a window is black and you need to know why.</string>
+
+    <string name="settings_imports">New imports</string>
+    <string name="settings_hide_ads">Hide ads in newly imported apps</string>
+    <string name="settings_hide_ads_note">Ad SDK views cannot work for a translated app and only leave empty banners. This hides them as soon as the app is imported; it never removes an ad from anything else.</string>
+
+    <string name="settings_logging">Logging</string>
+    <string name="settings_app_log">Detailed app log</string>
+    <string name="settings_app_log_note">Every window event, the runtime\'s own report as it changes, and the reason each process died, written to files/zb-app-log.txt and logcat. On by default; turning it off makes a session lighter (the report is not read every few seconds) and leaves only errors on logcat.</string>
+    <string name="settings_app_log_release">This APK is the release build, which compiles the detailed log out entirely - it is the debuggable build that writes one. See README-DEBUG-BUILD.md.</string>
+    <string name="settings_runtime_report">Persist the runtime report</string>
+    <string name="settings_runtime_report_note">The :guest process rewrites files/zb-runtime-report.txt whenever the report changes, so a guest that dies silently still leaves its own account behind. Off means less I/O in a session and nothing to read after a crash.</string>
+
+    <string name="settings_reliability">Reliability</string>
+    <string name="settings_reopen">Reopen the app when the guest process stops unexpectedly</string>
+    <string name="settings_reopen_note">A watched :guest process that dies with a window on screen is reopened by the launcher, at most three times in ten minutes. Off means a crash leaves the game closed.</string>
+    <string name="settings_retry">Retry a failed launch once</string>
+    <string name="settings_retry_note">A launch that fails while the app is installed is retried once in a fresh :guest process, which is what fixes the intermittent failures. Off means the reason is shown immediately.</string>
+    <string name="settings_clipboard">Copy the reason to the clipboard when a launch fails</string>
+    <string name="settings_clipboard_note">Makes the failure report pasteable on a phone with no file manager and a ROM with no usable logcat.</string>
+
+    <string name="settings_about">About</string>
+    <string name="settings_about_version">Version</string>
+<string name="settings_about_palette">Scheme</string>
+    <string name="settings_about_bundled">Bundled app</string>
+
+    <string name="settings_diagnose">Diagnose</string>
+    <string name="settings_diagnose_note">Every report here is also copied to the clipboard, so it can be pasted into a message without a file manager.</string>
+    <string name="settings_copy_run_report">Copy the last run report</string>
+    <string name="settings_copy_errors">Copy the error log</string>
+    <string name="settings_copy_debug_log">Copy the detailed app log</string>
+    <string name="settings_device_info">Copy this device\'s details</string>
+    <string name="settings_effective_settings">Copy the effective settings</string>
+    <string name="settings_stop_app">Stop the running app</string>
+    <string name="settings_copied">Copied to the clipboard</string>
+    <string name="settings_nothing_copied">Nothing to copy yet - launch an app once, then look again.</string>
+    <string name="settings_stopped">The running app was stopped</string>
+    <string name="settings_nothing_running">Nothing was running</string>
+</resources>
